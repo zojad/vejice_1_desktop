@@ -6,6 +6,7 @@ const webpack = require("webpack");
 const devCerts = require("office-addin-dev-certs");
 const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 // Dev & Prod base URLs
 const urlDev = "https://localhost:4001/";
