@@ -1,4 +1,4 @@
-/* global Office, Word, window, process, performance, console */
+/* global Office, Word, window, process, performance, console, URLSearchParams */
 
 // Wire your checker and expose globals the manifest calls.
 import { checkDocumentText as runCheckVejice } from "../logic/preveriVejice.js";
@@ -21,6 +21,42 @@ const done = (event, tag) => {
     errL(`${tag}: event.completed() threw`, e);
   }
 };
+
+const boolFromString = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return undefined;
+    if (["1", "true", "yes", "on"].includes(trimmed)) return true;
+    if (["0", "false", "no", "off"].includes(trimmed)) return false;
+  }
+  return undefined;
+};
+
+let queryMockFlag;
+if (typeof window !== "undefined" && typeof URLSearchParams !== "undefined") {
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const q = params.get("mock");
+    if (q !== null) queryMockFlag = boolFromString(q);
+  } catch (err) {
+    errL("Failed to parse ?mock query param", err);
+  }
+}
+
+const envMockFlag =
+  typeof process !== "undefined" ? boolFromString(process.env?.VEJICE_USE_MOCK ?? "") : undefined;
+let resolvedMock;
+if (typeof queryMockFlag === "boolean") {
+  resolvedMock = queryMockFlag;
+} else if (typeof envMockFlag === "boolean") {
+  resolvedMock = envMockFlag;
+}
+
+if (typeof window !== "undefined" && typeof resolvedMock === "boolean") {
+  window.__VEJICE_USE_MOCK__ = resolvedMock;
+  if (resolvedMock) log("Mock API mode is ENABLED");
+}
 
 Office.onReady(() => {
   log("Office ready | Host:", Office?.context?.host, "| Platform:", Office?.platform);

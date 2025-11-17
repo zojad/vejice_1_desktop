@@ -58,6 +58,7 @@ module.exports = async (env, options) => {
       }),
       new webpack.DefinePlugin({
         "process.env.VEJICE_API_KEY": JSON.stringify(process.env.VEJICE_API_KEY || ""),
+        "process.env.VEJICE_USE_MOCK": JSON.stringify(process.env.VEJICE_USE_MOCK || ""),
       }),
       new CopyWebpackPlugin({
         patterns: [

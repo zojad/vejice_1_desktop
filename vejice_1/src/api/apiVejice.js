@@ -1,4 +1,4 @@
-/* global window, process, performance, console */
+/* global window, process, performance, console, setTimeout */
 // src/api/apiVejice.js
 import axios from "axios";
 
@@ -17,6 +17,30 @@ const API_KEY =
   (typeof process !== "undefined" && process.env?.VEJICE_API_KEY) ||
   (typeof window !== "undefined" && window.__VEJICE_API_KEY) ||
   "";
+
+const boolFromString = (value) => {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return undefined;
+    if (["1", "true", "yes", "on"].includes(trimmed)) return true;
+    if (["0", "false", "no", "off"].includes(trimmed)) return false;
+  }
+  return undefined;
+};
+
+const envMockFlag =
+  typeof process !== "undefined" ? boolFromString(process.env?.VEJICE_USE_MOCK ?? "") : undefined;
+const winMockFlag =
+  typeof window !== "undefined" && typeof window.__VEJICE_USE_MOCK__ === "boolean"
+    ? window.__VEJICE_USE_MOCK__
+    : undefined;
+let USE_MOCK = false;
+if (typeof winMockFlag === "boolean") {
+  USE_MOCK = winMockFlag;
+} else if (typeof envMockFlag === "boolean") {
+  USE_MOCK = envMockFlag;
+}
 
 export class VejiceApiError extends Error {
   constructor(message, meta = {}) {
@@ -40,11 +64,64 @@ function describeAxiosError(err) {
   };
 }
 
+const MOCK_LATENCY_MS = 350;
+const MOCK_INSERT_KEYWORDS = ["ki", "ker", "ko", "kjer", "da", "zato", "toda"];
+
+function insertCommaBeforeKeyword(sentence = "", keyword) {
+  if (!sentence || !keyword) return null;
+  const lower = sentence.toLowerCase();
+  const needle = ` ${keyword.toLowerCase()}`;
+  const idx = lower.indexOf(needle);
+  if (idx > 0) {
+    const before = sentence[idx - 1];
+    if (before && before !== "," && before !== "\n") {
+      return sentence.slice(0, idx) + "," + sentence.slice(idx);
+    }
+  }
+  return null;
+}
+
+function removeRedundantComma(sentence = "") {
+  const double = sentence.indexOf(", ,");
+  if (double >= 0) {
+    return sentence.slice(0, double) + sentence.slice(double + 1);
+  }
+  const beforeAnd = sentence.indexOf(", in");
+  if (beforeAnd >= 0) {
+    return sentence.slice(0, beforeAnd) + sentence.slice(beforeAnd + 1);
+  }
+  return null;
+}
+
+function mockCorrectSentence(sentence = "") {
+  let corrected = sentence;
+  for (const keyword of MOCK_INSERT_KEYWORDS) {
+    const updated = insertCommaBeforeKeyword(corrected, keyword);
+    if (updated) {
+      corrected = updated;
+      return corrected;
+    }
+  }
+  const removed = removeRedundantComma(corrected);
+  if (removed) return removed;
+  return corrected;
+}
+
+async function mockPopraviPoved(poved = "") {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(mockCorrectSentence(poved)), MOCK_LATENCY_MS);
+  });
+}
+
 /**
  * Pokliče Vejice API in vrne popravljeno poved.
  * Vrne popravljeno besedilo ali original, če pride do težave.
  */
 export async function popraviPoved(poved) {
+  if (USE_MOCK) {
+    log("Mock API ->", snip(poved));
+    return mockPopraviPoved(poved);
+  }
   if (!API_KEY) {
     throw new VejiceApiError("Missing VEJICE_API_KEY configuration");
   }
