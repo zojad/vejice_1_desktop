@@ -22,6 +22,7 @@
   <AppDomains>
     <AppDomain>https://localhost:4001</AppDomain>
     <AppDomain>https://zojad.github.io</AppDomain>
+    <AppDomain>https://zojad.github.io/vejice_1</AppDomain>
     <AppDomain>https://gpu-proc1.cjvt.si</AppDomain>
   </AppDomains>
 
