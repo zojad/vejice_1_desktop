@@ -17,6 +17,7 @@ const warn = (...a) => DEBUG && console.warn("[Vejice CHECK]", ...a);
 const errL = (...a) => console.error("[Vejice CHECK]", ...a);
 const tnow = () => performance?.now?.() ?? Date.now();
 const SNIP = (s, n = 80) => (typeof s === "string" ? s.slice(0, n) : s);
+const MAX_AUTOFIX_PASSES = 3;
 
 /** ─────────────────────────────────────────────────────────
  *  Helpers: znaki & pravila
@@ -212,53 +213,65 @@ export async function checkDocumentText() {
 
         for (let idx = 0; idx < paras.items.length; idx++) {
           const p = paras.items[idx];
-          const original = p.text || "";
-          const trimmed = original.trim();
+          let sourceText = p.text || "";
+          const trimmed = sourceText.trim();
           if (!trimmed) continue;
 
           const pStart = tnow();
           paragraphsProcessed++;
-          log(`P${idx}: len=${original.length} | "${SNIP(trimmed)}"`);
+          log(`P${idx}: len=${sourceText.length} | "${SNIP(trimmed)}"`);
+          let passText = sourceText;
 
-          let corrected;
-          try {
-            corrected = await popraviPoved(original);
-          } catch (apiErr) {
-            apiErrors++;
-            warn(`P${idx}: API call failed -> skip paragraph`, apiErr);
-            continue;
-          }
-          log(`P${idx}: corrected -> "${SNIP(corrected)}"`);
-
-          if (!onlyCommasChanged(original, corrected)) {
-            log(`P${idx}: API changed more than commas -> SKIP`);
-            continue;
-          }
-
-          const opsAll = diffCommasOnly(original, corrected);
-          const ops = filterCommaOps(original, corrected, opsAll);
-          log(`P${idx}: ops candidate=${opsAll.length}, after filter=${ops.length}`);
-
-          if (!ops.length) {
-            log(`P${idx}: no applicable comma ops`);
-            continue;
-          }
-
-          for (const op of ops) {
-            if (op.kind === "insert") {
-              await insertCommaAt(context, p, original, corrected, op.pos);
-              await ensureSpaceAfterComma(context, p, corrected, op.pos);
-              totalInserted++;
-            } else {
-              await deleteCommaAt(context, p, original, op.pos);
-              totalDeleted++;
+          for (let pass = 0; pass < MAX_AUTOFIX_PASSES; pass++) {
+            let corrected;
+            try {
+              corrected = await popraviPoved(passText);
+            } catch (apiErr) {
+              apiErrors++;
+              warn(`P${idx} pass ${pass}: API call failed -> stop paragraph`, apiErr);
+              break;
             }
+            log(`P${idx} pass ${pass}: corrected -> "${SNIP(corrected)}"`);
+
+            if (!onlyCommasChanged(passText, corrected)) {
+              log(`P${idx} pass ${pass}: API changed more than commas -> SKIP`);
+              break;
+            }
+
+            const opsAll = diffCommasOnly(passText, corrected);
+            const ops = filterCommaOps(passText, corrected, opsAll);
+            log(
+              `P${idx} pass ${pass}: ops candidate=${opsAll.length}, after filter=${ops.length}`
+            );
+
+            if (!ops.length) {
+              if (pass === 0) log(`P${idx}: no applicable comma ops`);
+              break;
+            }
+
+            for (const op of ops) {
+              if (op.kind === "insert") {
+                await insertCommaAt(context, p, passText, corrected, op.pos);
+                await ensureSpaceAfterComma(context, p, corrected, op.pos);
+                totalInserted++;
+              } else {
+                await deleteCommaAt(context, p, passText, op.pos);
+                totalDeleted++;
+              }
+            }
+
+            await context.sync();
+            p.load("text");
+            await context.sync();
+            const updated = p.text || "";
+            if (!updated || updated === passText) break;
+            passText = updated;
           }
 
-          // eslint-disable-next-line office-addins/no-context-sync-in-loop
-          await context.sync(); // UI responsive
           log(
-            `P${idx}: applied (ins=${totalInserted}, del=${totalDeleted}) | ${Math.round(tnow() - pStart)} ms`
+            `P${idx}: applied (ins=${totalInserted}, del=${totalDeleted}) | ${Math.round(
+              tnow() - pStart
+            )} ms`
           );
         }
       } finally {
