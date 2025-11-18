@@ -125,7 +125,7 @@ export async function popraviPoved(poved) {
   if (!API_KEY) {
     throw new VejiceApiError("Missing VEJICE_API_KEY configuration");
   }
-  const url = "https://gpu-proc1.cjvt.si/popravljalnik-api/popravi_crkovanje";
+  const url = "https://gpu-proc1.cjvt.si/popravljalnik-api/postavi_vejice";
 
   const data = {
     vhodna_poved: poved,
