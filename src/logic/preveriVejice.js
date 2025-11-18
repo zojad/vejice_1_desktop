@@ -159,13 +159,14 @@ async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
   const { left, right } = makeAnchor(original, atOriginalPos);
   const pr = paragraph.getRange();
 
-  if (left.length > 0) {
+  const deleteUsingLeft = async () => {
+    if (!left.length) return false;
     const lm = pr.search(left, { matchCase: false, matchWholeWord: false });
     lm.load("items");
     await context.sync();
     if (!lm.items.length) {
       warn("delete: left anchor not found");
-      return;
+      return false;
     }
     const afterLeft = lm.items[0].getRange("After");
     const comma = afterLeft.search(",", { matchCase: false, matchWholeWord: false });
@@ -173,20 +174,20 @@ async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
     await context.sync();
     if (!comma.items.length) {
       warn("delete: comma after left anchor not found");
-      return;
+      return false;
     }
     comma.items[0].insertText("", Word.InsertLocation.replace);
-  } else {
-    if (!right) {
-      warn("delete: no right anchor at paragraph start");
-      return;
-    }
+    return true;
+  };
+
+  const deleteUsingRight = async () => {
+    if (!right) return false;
     const rm = pr.search(right, { matchCase: false, matchWholeWord: false });
     rm.load("items");
     await context.sync();
     if (!rm.items.length) {
       warn("delete: right anchor not found");
-      return;
+      return false;
     }
     const beforeRight = rm.items[0].getRange("Before");
     const comma = beforeRight.search(",", { matchCase: false, matchWholeWord: false });
@@ -194,9 +195,15 @@ async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
     await context.sync();
     if (!comma.items.length) {
       warn("delete: comma before right anchor not found");
-      return;
+      return false;
     }
     comma.items[0].insertText("", Word.InsertLocation.replace);
+    return true;
+  };
+
+  const deleted = (await deleteUsingLeft()) || (await deleteUsingRight());
+  if (!deleted) {
+    warn("delete: failed to remove comma at pos", atOriginalPos);
   }
 }
 
