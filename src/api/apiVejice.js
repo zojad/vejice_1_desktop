@@ -151,7 +151,16 @@ export async function popraviPoved(poved) {
     const t1 = performance?.now?.() ?? Date.now();
 
     const d = r?.data || {};
-    const out = d.popravljeno_besedilo?.trim() || d.popravki?.[0]?.predlog?.trim() || poved;
+    const candidateTexts = [
+      d.popravljeno_besedilo,
+      d.target_text,
+      d.popravki?.[0]?.predlog,
+      Array.isArray(d.corrections) ? d.corrections[0]?.suggested_text : undefined,
+      Array.isArray(d.apply_corrections) ? d.apply_corrections[0]?.suggested_text : undefined,
+    ];
+    const out = candidateTexts
+      .map((txt) => (typeof txt === "string" ? txt.trim() : ""))
+      .find((txt) => txt) || poved;
 
     log(
       "OK",
