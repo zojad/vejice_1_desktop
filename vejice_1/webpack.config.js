@@ -30,7 +30,7 @@ module.exports = async (env, options) => {
     },
     output: {
       filename: "[name].js",
-      path: path.resolve(__dirname, "dist"),
+      path: path.resolve(__dirname, "docs"),
       clean: true,
     },
     resolve: { extensions: [".html", ".js"] },
@@ -79,7 +79,7 @@ module.exports = async (env, options) => {
       host: "localhost",
       allowedHosts: "all",
       port: 4001,
-      static: "./dist",
+      static: "./docs",
       server: {
         type: "https",
         options:
