@@ -156,55 +156,24 @@ async function ensureSpaceAfterComma(context, paragraph, corrected, atCorrectedP
 
 // Briši samo znak vejice
 async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
-  const { left, right } = makeAnchor(original, atOriginalPos);
   const pr = paragraph.getRange();
-
-  const deleteUsingLeft = async () => {
-    if (!left.length) return false;
-    const lm = pr.search(left, { matchCase: false, matchWholeWord: false });
-    lm.load("items");
-    await context.sync();
-    if (!lm.items.length) {
-      warn("delete: left anchor not found");
-      return false;
-    }
-    const afterLeft = lm.items[0].getRange("After");
-    const comma = afterLeft.search(",", { matchCase: false, matchWholeWord: false });
-    comma.load("items");
-    await context.sync();
-    if (!comma.items.length) {
-      warn("delete: comma after left anchor not found");
-      return false;
-    }
-    comma.items[0].insertText("", Word.InsertLocation.replace);
-    return true;
-  };
-
-  const deleteUsingRight = async () => {
-    if (!right) return false;
-    const rm = pr.search(right, { matchCase: false, matchWholeWord: false });
-    rm.load("items");
-    await context.sync();
-    if (!rm.items.length) {
-      warn("delete: right anchor not found");
-      return false;
-    }
-    const beforeRight = rm.items[0].getRange("Before");
-    const comma = beforeRight.search(",", { matchCase: false, matchWholeWord: false });
-    comma.load("items");
-    await context.sync();
-    if (!comma.items.length) {
-      warn("delete: comma before right anchor not found");
-      return false;
-    }
-    comma.items[0].insertText("", Word.InsertLocation.replace);
-    return true;
-  };
-
-  const deleted = (await deleteUsingLeft()) || (await deleteUsingRight());
-  if (!deleted) {
-    warn("delete: failed to remove comma at pos", atOriginalPos);
+  let ordinal = 0;
+  for (let i = 0; i <= atOriginalPos && i < original.length; i++) {
+    if (original[i] === ",") ordinal++;
   }
+  if (ordinal === 0) {
+    warn("delete: no comma found in original at pos", atOriginalPos);
+    return;
+  }
+  const matches = pr.search(",", { matchCase: false, matchWholeWord: false });
+  matches.load("items");
+  await context.sync();
+  const idx = ordinal - 1;
+  if (idx >= matches.items.length) {
+    warn("delete: comma ordinal out of range", ordinal, "/", matches.items.length);
+    return;
+  }
+  matches.items[idx].insertText("", Word.InsertLocation.replace);
 }
 
 /** ─────────────────────────────────────────────────────────
