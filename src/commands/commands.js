@@ -22,6 +22,15 @@ const done = (event, tag) => {
   }
 };
 
+const revisionsApiSupported = () => {
+  try {
+    return Boolean(Office?.context?.requirements?.isSetSupported?.("WordApi", "1.3"));
+  } catch (err) {
+    errL("Failed to check requirement set support", err);
+    return false;
+  }
+};
+
 const boolFromString = (value) => {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") {
@@ -83,6 +92,9 @@ window.acceptAllChanges = async (event) => {
   const t0 = tnow();
   log("CLICK: Sprejmi spremembe (acceptAllChanges)");
   try {
+    if (!revisionsApiSupported()) {
+      throw new Error("Revisions API is not available on this host");
+    }
     await Word.run(async (context) => {
       const revisions = context.document.revisions;
       revisions.load("items");
@@ -97,7 +109,11 @@ window.acceptAllChanges = async (event) => {
       log("Accepted revisions:", count, "|", Math.round(tnow() - t0), "ms");
     });
   } catch (err) {
-    errL("acceptAllChanges failed:", err);
+    if (err?.message?.includes("Revisions API is not available")) {
+      errL("acceptAllChanges skipped: revisions API is not available on this host");
+    } else {
+      errL("acceptAllChanges failed:", err);
+    }
   } finally {
     done(event, "acceptAllChanges");
     log("event.completed(): acceptAllChanges");
@@ -108,6 +124,9 @@ window.rejectAllChanges = async (event) => {
   const t0 = tnow();
   log("CLICK: Zavrni spremembe (rejectAllChanges)");
   try {
+    if (!revisionsApiSupported()) {
+      throw new Error("Revisions API is not available on this host");
+    }
     await Word.run(async (context) => {
       const revisions = context.document.revisions;
       revisions.load("items");
@@ -122,7 +141,11 @@ window.rejectAllChanges = async (event) => {
       log("Rejected revisions:", count, "|", Math.round(tnow() - t0), "ms");
     });
   } catch (err) {
-    errL("rejectAllChanges failed:", err);
+    if (err?.message?.includes("Revisions API is not available")) {
+      errL("rejectAllChanges skipped: revisions API is not available on this host");
+    } else {
+      errL("rejectAllChanges failed:", err);
+    }
   } finally {
     done(event, "rejectAllChanges");
     log("event.completed(): rejectAllChanges");

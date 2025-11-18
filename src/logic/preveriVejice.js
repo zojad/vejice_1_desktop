@@ -214,12 +214,22 @@ export async function checkDocumentText() {
     await Word.run(async (context) => {
       // naloži in začasno vključi sledenje spremembam
       const doc = context.document;
-      doc.load("trackRevisions");
-      await context.sync();
-
-      const prevTrack = doc.trackRevisions;
-      doc.trackRevisions = true;
-      log("TrackRevisions:", prevTrack, "-> true");
+      let trackToggleSupported = false;
+      let prevTrack = false;
+      if (typeof doc.trackRevisions === "undefined") {
+        warn("trackRevisions not available on this host -> skip toggling");
+      } else {
+        try {
+          doc.load("trackRevisions");
+          await context.sync();
+          prevTrack = doc.trackRevisions;
+          doc.trackRevisions = true;
+          trackToggleSupported = true;
+          log("TrackRevisions:", prevTrack, "-> true");
+        } catch (trackErr) {
+          warn("trackRevisions toggle failed -> skip", trackErr);
+        }
+      }
 
       try {
         // pridobi odstavke
@@ -281,9 +291,11 @@ export async function checkDocumentText() {
         }
       } finally {
         // povrni sledenje spremembam
-        doc.trackRevisions = prevTrack;
-        await context.sync();
-        log("TrackRevisions restored ->", prevTrack);
+        if (trackToggleSupported) {
+          doc.trackRevisions = prevTrack;
+          await context.sync();
+          log("TrackRevisions restored ->", prevTrack);
+        }
       }
     });
 
