@@ -52,6 +52,9 @@ function resetParagraphTokenAnchorsOnline() {
 function setParagraphTokenAnchorsOnline(paragraphIndex, anchors) {
   paragraphTokenAnchorsOnline[paragraphIndex] = anchors;
 }
+function getParagraphTokenAnchorsOnline(paragraphIndex) {
+  return paragraphTokenAnchorsOnline[paragraphIndex];
+}
 
 function createParagraphTokenAnchors({
   paragraphIndex,
@@ -736,10 +739,11 @@ function extractLastWord(text) {
 async function tryApplyDeleteUsingMetadata(context, paragraph, suggestion) {
   const meta = suggestion?.metadata;
   if (!meta || !Number.isFinite(meta.charStart) || meta.charStart < 0) return false;
+  const entry = getParagraphTokenAnchorsOnline(suggestion.paragraphIndex);
   const range = await getRangeForCharacterSpan(
     context,
     paragraph,
-    paragraph.text,
+    entry?.originalText ?? paragraph.text,
     meta.charStart,
     meta.charEnd,
     "apply-delete",
@@ -775,10 +779,11 @@ async function applyDeleteSuggestion(context, paragraph, suggestion) {
 async function tryApplyInsertUsingMetadata(context, paragraph, suggestion) {
   const meta = suggestion?.metadata;
   if (!meta) return false;
+  const entry = getParagraphTokenAnchorsOnline(suggestion.paragraphIndex);
   const highlightRange = await getRangeForCharacterSpan(
     context,
     paragraph,
-    paragraph.text,
+    entry?.originalText ?? paragraph.text,
     meta.highlightCharStart,
     meta.highlightCharEnd,
     "apply-insert-highlight",
