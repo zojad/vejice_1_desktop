@@ -283,6 +283,12 @@ async function highlightInsertSuggestion(context, paragraph, corrected, op, para
     return false;
   }
 
+  try {
+    range = range.getRange("Content");
+  } catch (err) {
+    warn("highlight insert: failed to focus range", err);
+  }
+
   range.font.highlightColor = HIGHLIGHT_INSERT;
   context.trackedObjects.add(range);
   addPendingSuggestionOnline({
