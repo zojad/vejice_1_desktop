@@ -314,8 +314,23 @@ async function clearOnlineSuggestionMarkers(context) {
 }
 
 export async function applyAllSuggestionsOnline() {
-  await checkDocumentTextDesktop();
+  if (!pendingSuggestionsOnline.length) return;
   await Word.run(async (context) => {
+    for (const sug of pendingSuggestionsOnline) {
+      try {
+        context.trackedObjects.add(sug.range);
+        if (sug.kind === "delete") {
+          sug.range.insertText("", Word.InsertLocation.replace);
+        } else {
+          const after = sug.range.getRange("After");
+          after.insertText(",", Word.InsertLocation.before);
+        }
+        sug.range.font.highlightColor = null;
+      } catch (err) {
+        warn("applyAllSuggestionsOnline: failed to apply suggestion", err);
+      }
+    }
+    await context.sync();
     await clearOnlineSuggestionMarkers(context);
   });
 }
