@@ -772,54 +772,26 @@ async function applyDeleteSuggestion(context, paragraph, suggestion) {
   await applyDeleteSuggestionLegacy(context, paragraph, suggestion);
 }
 
-function selectInsertAnchor(metadata) {
-  if (!metadata) return null;
-  const candidates = [
-    metadata.sourceTokenAt
-      ? { anchor: metadata.sourceTokenAt, location: Word.InsertLocation.after }
-      : null,
-    metadata.sourceTokenBefore
-      ? { anchor: metadata.sourceTokenBefore, location: Word.InsertLocation.after }
-      : null,
-    metadata.sourceTokenAfter
-      ? { anchor: metadata.sourceTokenAfter, location: Word.InsertLocation.before }
-      : null,
-    metadata.targetTokenBefore
-      ? { anchor: metadata.targetTokenBefore, location: Word.InsertLocation.before }
-      : null,
-    metadata.targetTokenAt
-      ? { anchor: metadata.targetTokenAt, location: Word.InsertLocation.before }
-      : null,
-    metadata.targetTokenAfter
-      ? { anchor: metadata.targetTokenAfter, location: Word.InsertLocation.before }
-      : null,
-  ].filter(Boolean);
-  for (const candidate of candidates) {
-    if (
-      candidate?.anchor?.matched &&
-      Number.isFinite(candidate.anchor.charStart) &&
-      candidate.anchor.charStart >= 0
-    ) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
 async function tryApplyInsertUsingMetadata(context, paragraph, suggestion) {
-  const anchorInfo = selectInsertAnchor(suggestion?.metadata);
-  if (!anchorInfo) return false;
-  const range = await getRangeForCharacterSpan(
+  const meta = suggestion?.metadata;
+  if (!meta) return false;
+  const highlightRange = await getRangeForCharacterSpan(
     context,
     paragraph,
     paragraph.text,
-    anchorInfo.anchor.charStart,
-    anchorInfo.anchor.charEnd,
-    "apply-insert",
-    anchorInfo.anchor.tokenText || suggestion?.metadata?.highlightText
+    meta.highlightCharStart,
+    meta.highlightCharEnd,
+    "apply-insert-highlight",
+    meta.highlightText
   );
-  if (!range) return false;
-  range.insertText(",", anchorInfo.location);
+  if (!highlightRange) return false;
+  try {
+    const after = highlightRange.getRange("After");
+    after.insertText(",", Word.InsertLocation.before);
+  } catch (err) {
+    warn("apply insert metadata: failed to insert via highlight", err);
+    return false;
+  }
   return true;
 }
 
