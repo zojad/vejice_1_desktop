@@ -31,8 +31,18 @@ function resetPendingSuggestionsOnline() {
 function addPendingSuggestionOnline(suggestion) {
   pendingSuggestionsOnline.push(suggestion);
 }
-export function getPendingSuggestionsOnline() {
-  return pendingSuggestionsOnline;
+export function getPendingSuggestionsOnline(debugSnapshot = false) {
+  if (!debugSnapshot) return pendingSuggestionsOnline;
+  return pendingSuggestionsOnline.map((sug) => ({
+    id: sug?.id,
+    kind: sug?.kind,
+    paragraphIndex: sug?.paragraphIndex,
+    metadata: sug?.metadata,
+    originalPos: sug?.originalPos,
+    leftWord: sug?.leftWord,
+    leftSnippet: sug?.leftSnippet,
+    rightSnippet: sug?.rightSnippet,
+  }));
 }
 
 if (typeof window !== "undefined") {
@@ -40,6 +50,7 @@ if (typeof window !== "undefined") {
   window.__VEJICE_DEBUG_STATE__.getPendingSuggestionsOnline = getPendingSuggestionsOnline;
   window.__VEJICE_DEBUG_STATE__.getParagraphAnchorsOnline = () => paragraphTokenAnchorsOnline;
   window.getPendingSuggestionsOnline = getPendingSuggestionsOnline;
+  window.getPendingSuggestionsSnapshot = () => getPendingSuggestionsOnline(true);
 }
 
 const paragraphsTouchedOnline = new Set();
@@ -1352,3 +1363,4 @@ async function checkDocumentTextOnline() {
     errL("ERROR in checkDocumentTextOnline:", e);
   }
 }
+
