@@ -782,14 +782,12 @@ async function tryApplyDeleteUsingMetadata(context, paragraph, suggestion) {
   const meta = suggestion?.metadata;
   if (!meta) return false;
 
-  if (
-    meta.sourceTokenAt?.tokenText?.includes(",") ||
-    meta.sourceTokenAfter?.tokenText?.includes(",")
-  ) {
-    const anchorSnapshot = meta.sourceTokenAt?.tokenText?.includes(",")
-      ? meta.sourceTokenAt
-      : meta.sourceTokenAfter;
-    const tokenRange = await findTokenRangeForAnchor(context, paragraph, anchorSnapshot);
+  const commaAnchor =
+    (meta.sourceTokenAt?.tokenText?.includes(",") && meta.sourceTokenAt) ||
+    (meta.sourceTokenAfter?.tokenText?.includes(",") && meta.sourceTokenAfter) ||
+    (meta.sourceTokenBefore?.tokenText?.includes(",") && meta.sourceTokenBefore);
+  if (commaAnchor) {
+    const tokenRange = await findTokenRangeForAnchor(context, paragraph, commaAnchor);
     if (tokenRange) {
       const commaSearch = tokenRange.search(",", { matchCase: false, matchWholeWord: false });
       commaSearch.load("items");
