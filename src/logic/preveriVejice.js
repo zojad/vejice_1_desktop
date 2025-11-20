@@ -959,7 +959,42 @@ async function findRangeForInsert(context, paragraph, suggestion) {
   return range;
 }
 
-async function clearOnlineSuggestionMarkers(context, suggestionsOverride) {
+async function clearHighlightForSuggestion(context, paragraph, suggestion) {
+  if (!suggestion) return;
+  if (suggestion.highlightRange) {
+    try {
+      suggestion.highlightRange.font.highlightColor = null;
+      context.trackedObjects.remove(suggestion.highlightRange);
+    } catch (err) {
+      warn("clearHighlightForSuggestion: failed via highlightRange", err);
+    } finally {
+      suggestion.highlightRange = null;
+    }
+    return;
+  }
+  const meta = suggestion.metadata;
+  if (!meta) return;
+  const entry = paragraphTokenAnchorsOnline[suggestion.paragraphIndex];
+  const paragraphText = entry?.originalText ?? paragraph?.text ?? "";
+  const charStart =
+    typeof meta.highlightCharStart === "number" ? meta.highlightCharStart : meta.charStart;
+  const charEnd =
+    typeof meta.highlightCharEnd === "number" ? meta.highlightCharEnd : meta.charEnd;
+  if (!paragraph || !paragraphText || !Number.isFinite(charStart)) return;
+  const range = await getRangeForCharacterSpan(
+    context,
+    paragraph,
+    paragraphText,
+    charStart,
+    charEnd,
+    "clear-highlight",
+    meta.highlightText || meta.highlightAnchorTarget?.tokenText
+  );
+  if (range) {
+    range.font.highlightColor = null;
+  }
+}
+async function clearOnlineSuggestionMarkers(context, suggestionsOverride, paragraphs) {
   const source =
     Array.isArray(suggestionsOverride) && suggestionsOverride.length
       ? suggestionsOverride
@@ -982,7 +1017,12 @@ async function clearOnlineSuggestionMarkers(context, suggestionsOverride) {
     return;
   }
   for (const sug of source) {
-    clearHighlight(sug);
+    const paragraph = paragraphs?.items?.[sug.paragraphIndex];
+    if (paragraph) {
+      await clearHighlightForSuggestion(context, paragraph, sug);
+    } else {
+      clearHighlight(sug);
+    }
   }
   await context.sync();
   if (!suggestionsOverride) {
@@ -1028,7 +1068,10 @@ export async function applyAllSuggestionsOnline() {
 
 export async function rejectAllSuggestionsOnline() {
   await Word.run(async (context) => {
-    await clearOnlineSuggestionMarkers(context);
+    const paras = context.document.body.paragraphs;
+    paras.load("items/text");
+    await context.sync();
+    await clearOnlineSuggestionMarkers(context, null, paras);
   });
 }
 /** ─────────────────────────────────────────────────────────
@@ -1168,14 +1211,13 @@ async function checkDocumentTextOnline() {
 
   try {
     await Word.run(async (context) => {
-      await clearOnlineSuggestionMarkers(context);
-      resetPendingSuggestionsOnline();
-      resetParagraphsTouchedOnline();
-      resetParagraphTokenAnchorsOnline();
-
       const paras = context.document.body.paragraphs;
       paras.load("items/text");
       await context.sync();
+      await clearOnlineSuggestionMarkers(context, null, paras);
+      resetPendingSuggestionsOnline();
+      resetParagraphsTouchedOnline();
+      resetParagraphTokenAnchorsOnline();
 
       let documentCharOffset = 0;
 
