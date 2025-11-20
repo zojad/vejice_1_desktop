@@ -1063,9 +1063,6 @@ export async function applyAllSuggestionsOnline() {
     await clearOnlineSuggestionMarkers(context, processedSuggestions);
     resetParagraphTokenAnchorsOnline();
   });
-
-  // Re-run detection to refresh highlights (ensures any leftover colors are cleared).
-  await checkDocumentTextOnline();
 }
 
 export async function rejectAllSuggestionsOnline() {
