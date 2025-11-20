@@ -1017,6 +1017,8 @@ export async function applyAllSuggestionsOnline() {
         warn("applyAllSuggestionsOnline: failed to apply suggestion", err);
       }
     }
+    // Flush any pending highlight removals before running formatting cleanup.
+    await context.sync();
     await cleanupCommaSpacingForParagraphs(context, paras, touchedIndexes);
     resetParagraphsTouchedOnline();
     await clearOnlineSuggestionMarkers(context, processedSuggestions);
