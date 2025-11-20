@@ -960,19 +960,25 @@ async function findRangeForInsert(context, paragraph, suggestion) {
 }
 
 async function clearOnlineSuggestionMarkers(context) {
+  const clearHighlight = (sug) => {
+    if (!sug?.highlightRange) return;
+    try {
+      sug.highlightRange.font.highlightColor = null;
+      context.trackedObjects.remove(sug.highlightRange);
+    } catch (err) {
+      warn("Failed to clear highlight", err);
+    } finally {
+      sug.highlightRange = null;
+    }
+  };
+
   if (!pendingSuggestionsOnline.length) {
     context.document.body.font.highlightColor = null;
+    await context.sync();
     return;
   }
   for (const sug of pendingSuggestionsOnline) {
-    try {
-      if (sug.highlightRange) {
-        sug.highlightRange.font.highlightColor = null;
-        context.trackedObjects.remove(sug.highlightRange);
-      }
-    } catch (err) {
-      warn("Failed to clear highlight", err);
-    }
+    clearHighlight(sug);
   }
   await context.sync();
   resetPendingSuggestionsOnline();
@@ -999,6 +1005,16 @@ export async function applyAllSuggestionsOnline() {
         // Keep paragraph.text up-to-date for subsequent metadata lookups.
         // eslint-disable-next-line office-addins/no-context-sync-in-loop
         await context.sync();
+        if (sug.highlightRange) {
+          try {
+            sug.highlightRange.font.highlightColor = null;
+            context.trackedObjects.remove(sug.highlightRange);
+          } catch (err) {
+            warn("applyAllSuggestionsOnline: failed to clear highlight", err);
+          } finally {
+            sug.highlightRange = null;
+          }
+        }
       } catch (err) {
         warn("applyAllSuggestionsOnline: failed to apply suggestion", err);
       }
