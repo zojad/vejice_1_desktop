@@ -978,8 +978,7 @@ async function clearHighlightForSuggestion(context, paragraph, suggestion) {
   const paragraphText = entry?.originalText ?? paragraph?.text ?? "";
   const charStart =
     typeof meta.highlightCharStart === "number" ? meta.highlightCharStart : meta.charStart;
-  const charEnd =
-    typeof meta.highlightCharEnd === "number" ? meta.highlightCharEnd : meta.charEnd;
+  const charEnd = typeof meta.highlightCharEnd === "number" ? meta.highlightCharEnd : meta.charEnd;
   if (!paragraph || !paragraphText || !Number.isFinite(charStart)) return;
   const range = await getRangeForCharacterSpan(
     context,
