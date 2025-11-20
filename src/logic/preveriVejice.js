@@ -230,6 +230,7 @@ function snapshotAnchor(anchor) {
   return {
     tokenId: anchor.tokenId,
     tokenIndex: anchor.tokenIndex,
+    tokenText: anchor.tokenText,
     charStart: anchor.charStart,
     charEnd: anchor.charEnd,
     documentCharStart: anchor.documentCharStart,
@@ -752,7 +753,22 @@ function extractLastWord(text) {
 
 async function tryApplyDeleteUsingMetadata(context, paragraph, suggestion) {
   const meta = suggestion?.metadata;
-  if (!meta || !Number.isFinite(meta.charStart) || meta.charStart < 0) return false;
+  if (!meta) return false;
+
+  if (meta.sourceTokenAt?.tokenText?.includes(",")) {
+    const tokenRange = await findTokenRangeForAnchor(context, paragraph, meta.sourceTokenAt);
+    if (tokenRange) {
+      const commaSearch = tokenRange.search(",", { matchCase: false, matchWholeWord: false });
+      commaSearch.load("items");
+      await context.sync();
+      if (commaSearch.items.length) {
+        commaSearch.items[0].insertText("", Word.InsertLocation.replace);
+        return true;
+      }
+    }
+  }
+
+  if (!Number.isFinite(meta.charStart) || meta.charStart < 0) return false;
   const entry = getParagraphTokenAnchorsOnline(suggestion.paragraphIndex);
   const range = await getRangeForCharacterSpan(
     context,
@@ -800,6 +816,22 @@ async function applyDeleteSuggestion(context, paragraph, suggestion) {
   if (await tryApplyDeleteUsingHighlight(suggestion)) return;
   if (await tryApplyDeleteUsingMetadata(context, paragraph, suggestion)) return;
   await applyDeleteSuggestionLegacy(context, paragraph, suggestion);
+}
+
+async function findTokenRangeForAnchor(context, paragraph, anchorSnapshot) {
+  if (!anchorSnapshot?.tokenText) return null;
+  const matches = paragraph.getRange().search(anchorSnapshot.tokenText, {
+    matchCase: false,
+    matchWholeWord: false,
+  });
+  matches.load("items");
+  await context.sync();
+  if (!matches.items.length) return null;
+  const targetIndex = Math.min(
+    typeof anchorSnapshot.tokenIndex === "number" ? anchorSnapshot.tokenIndex : 0,
+    matches.items.length - 1
+  );
+  return matches.items[targetIndex];
 }
 
 function selectInsertAnchor(meta) {
