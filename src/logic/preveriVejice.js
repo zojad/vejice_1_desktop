@@ -1178,6 +1178,8 @@ export async function rejectAllSuggestionsOnline() {
     paras.load("items/text");
     await context.sync();
     await clearOnlineSuggestionMarkers(context, null, paras);
+    context.document.body.font.highlightColor = null;
+    await context.sync();
   });
 }
 /** ─────────────────────────────────────────────────────────
