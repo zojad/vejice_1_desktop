@@ -556,29 +556,9 @@ function makeAnchor(text, idx, span = 16) {
   return { left, right };
 }
 
-function commaAlreadyPresent(original = "", left = "", right = "") {
-  let insertIdx = -1;
-  if (left) {
-    const idx = original.lastIndexOf(left);
-    if (idx >= 0) insertIdx = idx + left.length;
-  }
-  if (insertIdx < 0 && right) {
-    const idx = original.indexOf(right);
-    if (idx >= 0) insertIdx = idx;
-  }
-  if (insertIdx < 0) return false;
-  const prev = original[insertIdx - 1];
-  const at = original[insertIdx];
-  return prev === "," || at === ",";
-}
-
 // Vstavi vejico na podlagi sidra
 async function insertCommaAt(context, paragraph, original, corrected, atCorrectedPos) {
   const { left, right } = makeAnchor(corrected, atCorrectedPos);
-  if (commaAlreadyPresent(original, left, right)) {
-    warn("insert: comma already present at target; skipping");
-    return;
-  }
   const pr = paragraph.getRange();
 
   if (left.length > 0) {
@@ -1285,7 +1265,16 @@ async function checkDocumentTextDesktop() {
       const doc = context.document;
       let trackToggleSupported = false;
       let prevTrack = false;
-      log("TrackRevisions toggle skipped; please enable Track Changes in Word if desired.");
+      try {
+        doc.load("trackRevisions");
+        await context.sync();
+        prevTrack = doc.trackRevisions;
+        doc.trackRevisions = true;
+        trackToggleSupported = true;
+        log("TrackRevisions:", prevTrack, "-> true");
+      } catch (trackErr) {
+        warn("trackRevisions toggle failed -> proceeding without it", trackErr);
+      }
 
       try {
         // pridobi odstavke
@@ -1485,3 +1474,4 @@ async function checkDocumentTextOnline() {
     errL("ERROR in checkDocumentTextOnline:", e);
   }
 }
+

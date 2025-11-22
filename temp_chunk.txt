@@ -1,0 +1,20 @@
+
+  try {
+    await Word.run(async (context) => {
+      // naloži in začasno vključi sledenje spremembam
+      const doc = context.document;
+      let trackToggleSupported = false;
+      let prevTrack = false;
+      try {
+        // doc.load("trackRevisions");
+        // await context.sync();
+        // prevTrack = doc.trackRevisions;
+        // doc.trackRevisions = true;
+        // trackToggleSupported = true;
+        log("TrackRevisions toggle skipped");
+      } catch (trackErr) {
+        warn("trackRevisions not available -> skip toggling", trackErr);
+      }
+
+      try {
+        // pridobi odstavke

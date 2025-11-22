@@ -81,7 +81,8 @@ Office.onReady(() => {
 // —————————————————————————————————————————————
 window.checkDocumentText = async (event) => {
   const t0 = tnow();
-  log("CLICK: Preveri vejice (checkDocumentText)");
+  errL("CLICK: Preveri vejice (checkDocumentText)");
+  showDebugToast("checkDocumentText");
   try {
     await runCheckVejice();
     log("DONE: checkDocumentText |", Math.round(tnow() - t0), "ms");
@@ -95,7 +96,8 @@ window.checkDocumentText = async (event) => {
 
 window.acceptAllChanges = async (event) => {
   const t0 = tnow();
-  log("CLICK: Sprejmi spremembe (acceptAllChanges)");
+  errL("CLICK: Sprejmi spremembe (acceptAllChanges)");
+  showDebugToast("acceptAllChanges");
   try {
     if (isWordOnline()) {
       await applyAllSuggestionsOnline();
@@ -132,7 +134,8 @@ window.acceptAllChanges = async (event) => {
 
 window.rejectAllChanges = async (event) => {
   const t0 = tnow();
-  log("CLICK: Zavrni spremembe (rejectAllChanges)");
+  errL("CLICK: Zavrni spremembe (rejectAllChanges)");
+  showDebugToast("rejectAllChanges");
   try {
     if (isWordOnline()) {
       await rejectAllSuggestionsOnline();
@@ -166,3 +169,41 @@ window.rejectAllChanges = async (event) => {
     log("event.completed(): rejectAllChanges");
   }
 };
+
+// Explicitly associate ribbon commands (defensive: some hosts rely on action mapping)
+Office.onReady(() => {
+  try {
+    if (Office?.actions?.associate) {
+      Office.actions.associate("checkDocumentText", window.checkDocumentText);
+      Office.actions.associate("acceptAllChanges", window.acceptAllChanges);
+      Office.actions.associate("rejectAllChanges", window.rejectAllChanges);
+    }
+  } catch (err) {
+    errL("Failed to associate ribbon actions", err);
+  }
+});
+
+// Show a tiny debug dialog to prove the handler fired.
+function showDebugToast(tag) {
+  try {
+    if (Office?.context?.ui?.displayDialogAsync) {
+      const url = `https://localhost:4001/commands.html#clicked=${encodeURIComponent(tag)}`;
+      Office.context.ui.displayDialogAsync(url, { height: 10, width: 20, displayInIframe: true }, (res) => {
+        // Immediately close after showing
+        if (res?.status === Office.AsyncResultStatus.Succeeded && res.value?.close) {
+          setTimeout(() => {
+            try {
+              res.value.close();
+            } catch (e) {
+              errL("Debug dialog close failed", e);
+            }
+          }, 250);
+        }
+      });
+    } else {
+      log("Debug toast skipped (displayDialogAsync unavailable)");
+    }
+  } catch (err) {
+    errL("Debug toast failed", err);
+  }
+}
