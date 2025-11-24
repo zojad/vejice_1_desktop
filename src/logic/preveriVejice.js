@@ -170,9 +170,17 @@ function createParagraphTokenAnchors({
 function normalizeTokenList(tokens, prefix) {
   if (!Array.isArray(tokens)) return [];
   const normalized = [];
+  const idCounts = Object.create(null);
   for (let i = 0; i < tokens.length; i++) {
     const token = normalizeToken(tokens[i], prefix, i);
-    if (token) normalized.push(token);
+    if (!token) continue;
+    const baseId = typeof token.id === "string" && token.id.length ? token.id : `${prefix}${i + 1}`;
+    const count = idCounts[baseId] ?? 0;
+    idCounts[baseId] = count + 1;
+    token.id = count === 0 ? baseId : `${baseId}#${count + 1}`;
+    token.originalId = baseId;
+    token.occurrence = count;
+    normalized.push(token);
   }
   return normalized;
 }
@@ -587,6 +595,22 @@ function commaAlreadyPresent(original = "", left = "", right = "") {
   return prev === "," || at === ",";
 }
 
+function resolveOpPositions(opOrPos) {
+  if (opOrPos && typeof opOrPos === "object") {
+    const correctedPos =
+      typeof opOrPos.correctedPos === "number"
+        ? opOrPos.correctedPos
+        : typeof opOrPos.pos === "number"
+          ? opOrPos.pos
+          : -1;
+    const originalPos =
+      typeof opOrPos.originalPos === "number" ? opOrPos.originalPos : correctedPos;
+    return { correctedPos, originalPos };
+  }
+  const pos = typeof opOrPos === "number" ? opOrPos : -1;
+  return { correctedPos: pos, originalPos: pos };
+}
+
 async function removeDoubleCommas(context, paragraph) {
   let passes = 0;
   while (passes < 3) {
@@ -601,9 +625,11 @@ async function removeDoubleCommas(context, paragraph) {
 }
 
 // Vstavi vejico na podlagi sidra
-async function insertCommaAt(context, paragraph, original, corrected, atCorrectedPos) {
+async function insertCommaAt(context, paragraph, original, corrected, opOrPos) {
+  const { correctedPos, originalPos } = resolveOpPositions(opOrPos);
+  if (!Number.isFinite(correctedPos) || correctedPos < 0) return;
   // Direct position guard: if a comma is already at/adjacent to the target, skip.
-  const pos = Math.max(0, atCorrectedPos);
+  const pos = Math.max(0, correctedPos);
   const prevChar = pos > 0 ? original[pos - 1] : "";
   const atChar = pos < original.length ? original[pos] : "";
   if (prevChar === "," || atChar === ",") {
@@ -611,7 +637,7 @@ async function insertCommaAt(context, paragraph, original, corrected, atCorrecte
     return;
   }
 
-  const { left, right } = makeAnchor(corrected, atCorrectedPos);
+  const { left, right } = makeAnchor(corrected, correctedPos);
   if (commaAlreadyPresent(original, left, right)) {
     warn("insert: comma already present at target; skipping");
     return;
@@ -626,14 +652,28 @@ async function insertCommaAt(context, paragraph, original, corrected, atCorrecte
       warn("insert: left anchor not found");
       return;
     }
-    const after = m.items[0].getRange("After");
+    let targetIdx = m.items.length - 1;
+    if (typeof originalPos === "number" && originalPos >= 0) {
+      const ordinal = countSnippetOccurrencesBefore(original, left, originalPos);
+      if (ordinal > 0) {
+        targetIdx = Math.min(ordinal - 1, m.items.length - 1);
+      }
+    }
+    const after = m.items[targetIdx].getRange("After");
     after.insertText(",", Word.InsertLocation.before);
   } else {
     if (!right) {
       warn("insert: no right anchor at paragraph start");
       return;
     }
-    const m = pr.search(right, { matchCase: false, matchWholeWord: false });
+    const rightClean =
+      typeof right === "string" ? right.replace(/^,+/, "").replace(/,/g, "").trim() : "";
+    if (!rightClean) {
+      warn("insert: right anchor unavailable");
+      return;
+    }
+    const snippet = rightClean.slice(0, 12);
+    const m = pr.search(snippet, { matchCase: false, matchWholeWord: false });
     m.load("items");
     await context.sync();
     if (!m.items.length) {
@@ -646,11 +686,13 @@ async function insertCommaAt(context, paragraph, original, corrected, atCorrecte
 }
 
 // Po potrebi dodaj presledek po vejici (razen pred narekovaji ali števkami)
-async function ensureSpaceAfterComma(context, paragraph, corrected, atCorrectedPos) {
-  const next = charAtSafe(corrected, atCorrectedPos + 1);
+async function ensureSpaceAfterComma(context, paragraph, original, corrected, opOrPos) {
+  const { correctedPos, originalPos } = resolveOpPositions(opOrPos);
+  if (!Number.isFinite(correctedPos) || correctedPos < 0) return;
+  const next = charAtSafe(corrected, correctedPos + 1);
   if (!next || /\s/.test(next) || QUOTES.has(next) || isDigit(next)) return;
 
-  const { left, right } = makeAnchor(corrected, atCorrectedPos + 1);
+  const { left, right } = makeAnchor(corrected, correctedPos + 1);
   const pr = paragraph.getRange();
 
   if (left.length > 0) {
@@ -661,10 +703,24 @@ async function ensureSpaceAfterComma(context, paragraph, corrected, atCorrectedP
       warn("space-after: left anchor not found");
       return;
     }
-    const beforeRight = m.items[0].getRange("Before");
+    let targetIdx = m.items.length - 1;
+    if (typeof originalPos === "number" && originalPos >= 0) {
+      const ordinal = countSnippetOccurrencesBefore(original, left, originalPos);
+      if (ordinal > 0) {
+        targetIdx = Math.min(ordinal - 1, m.items.length - 1);
+      }
+    }
+    const beforeRight = m.items[targetIdx].getRange("Before");
     beforeRight.insertText(" ", Word.InsertLocation.before);
   } else if (right.length > 0) {
-    const m = pr.search(right, { matchCase: false, matchWholeWord: false });
+    const rightClean =
+      typeof right === "string" ? right.replace(/^,+/, "").replace(/,/g, "").trim() : "";
+    if (!rightClean) {
+      warn("space-after: right anchor unavailable");
+      return;
+    }
+    const snippet = rightClean.slice(0, 12);
+    const m = pr.search(snippet, { matchCase: false, matchWholeWord: false });
     m.load("items");
     await context.sync();
     if (!m.items.length) {
@@ -696,88 +752,6 @@ async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
     return;
   }
   matches.items[idx].insertText("", Word.InsertLocation.replace);
-}
-
-/** Token-indexed replacements (formatting-preserving) */
-function buildTokenMap(tokens = []) {
-  const map = {};
-  const counts = new Map();
-  tokens.forEach((tok, idx) => {
-    const id = tok?.id || `t${idx + 1}`;
-    const text = typeof tok?.text === "string" ? tok.text : "";
-    const count = counts.get(text) || 0;
-    map[id] = { text, ordinal: count };
-    counts.set(text, count + 1);
-  });
-  return map;
-}
-
-function collectCorrectionsFromRaw(raw = {}) {
-  const entries =
-    raw?.corrections && typeof raw.corrections === "object" ? Object.values(raw.corrections) : [];
-  const out = [];
-  entries.forEach((entry) => {
-    const corrs = Array.isArray(entry?.corrections) ? entry.corrections : [];
-    corrs.forEach((c) => {
-      const srcId = c?.source_id || entry?.source_start;
-      const tgtId = c?.target_id || entry?.target_start;
-      const srcText = typeof c?.source_text === "string" ? c.source_text : undefined;
-      const tgtText = typeof c?.text === "string" ? c.text : undefined;
-      if (srcId && (tgtText || tgtId)) {
-        out.push({ srcId, tgtId, srcText, tgtText });
-      }
-    });
-  });
-  return out;
-}
-
-function isCommaRelatedChange(srcText = "", tgtText = "") {
-  return srcText !== tgtText && (srcText.includes(",") || (tgtText && tgtText.includes(",")));
-}
-
-async function replaceTokenByOrdinal(context, paragraph, tokenText, ordinal, replacement) {
-  if (!tokenText || typeof replacement !== "string") return;
-  const matches = paragraph.search(tokenText, { matchCase: false, matchWholeWord: false });
-  matches.load("items");
-  await context.sync();
-  if (!matches.items.length) {
-    warn("replace: token text not found", tokenText);
-    return;
-  }
-  const idx = Math.max(0, ordinal);
-  if (idx >= matches.items.length) {
-    warn("replace: ordinal out of range", ordinal, "/", matches.items.length);
-    return;
-  }
-  matches.items[idx].insertText(replacement, Word.InsertLocation.replace);
-}
-
-async function applyCommaCorrectionsTokenBased(context, paragraph, raw = {}) {
-  const sourceTokens = Array.isArray(raw?.source_tokens) ? raw.source_tokens : [];
-  const targetTokens = Array.isArray(raw?.target_tokens) ? raw.target_tokens : [];
-  const sourceMap = buildTokenMap(sourceTokens);
-  const targetMap = buildTokenMap(targetTokens);
-  const corrections = collectCorrectionsFromRaw(raw);
-  let ins = 0;
-  let del = 0;
-  for (const corr of corrections) {
-    const src = sourceMap[corr.srcId];
-    if (!src || !src.text) continue;
-    const replacement =
-      corr.tgtText ||
-      (corr.tgtId && targetMap[corr.tgtId]?.text) ||
-      (raw?.target_text && src.text !== "" ? undefined : undefined);
-    if (typeof replacement !== "string") continue;
-    if (!isCommaRelatedChange(src.text, replacement)) continue;
-    try {
-      await replaceTokenByOrdinal(context, paragraph, src.text, src.ordinal, replacement);
-      if (src.text.includes(",") && !replacement.includes(",")) del++;
-      else if (!src.text.includes(",") && replacement.includes(",")) ins++;
-    } catch (err) {
-      warn("apply token correction failed", err);
-    }
-  }
-  return { inserted: ins, deleted: del };
 }
 
 function createSuggestionId(kind, paragraphIndex, pos) {
@@ -1426,16 +1400,47 @@ async function checkDocumentTextDesktop() {
           const pStart = tnow();
           paragraphsProcessed++;
           log(`P${idx}: len=${sourceText.length} | "${SNIP(trimmed)}"`);
-          try {
-            const { correctedText, raw } = await popraviPovedDetailed(sourceText);
-            log(`P${idx} corrected -> "${SNIP(correctedText)}"`);
-            const result = await applyCommaCorrectionsTokenBased(context, p, raw);
-            totalInserted += result?.inserted || 0;
-            totalDeleted += result?.deleted || 0;
+          let passText = sourceText;
+
+          for (let pass = 0; pass < MAX_AUTOFIX_PASSES; pass++) {
+            let corrected;
+            try {
+              corrected = await popraviPoved(passText);
+            } catch (apiErr) {
+              apiErrors++;
+              warn(`P${idx} pass ${pass}: API call failed -> stop paragraph`, apiErr);
+              break;
+            }
+            log(`P${idx} pass ${pass}: corrected -> "${SNIP(corrected)}"`);
+
+            const opsAll = diffCommasOnly(passText, corrected);
+            const ops = filterCommaOps(passText, corrected, opsAll);
+            log(`P${idx} pass ${pass}: ops candidate=${opsAll.length}, after filter=${ops.length}`);
+
+            if (!ops.length) {
+              if (pass === 0) log(`P${idx}: no applicable comma ops`);
+              break;
+            }
+
+            for (const op of ops) {
+              if (op.kind === "insert") {
+                await insertCommaAt(context, p, passText, corrected, op);
+                await ensureSpaceAfterComma(context, p, passText, corrected, op);
+                totalInserted++;
+              } else {
+                await deleteCommaAt(context, p, passText, op.pos);
+                totalDeleted++;
+              }
+            }
+
+            // eslint-disable-next-line office-addins/no-context-sync-in-loop
             await context.sync();
-          } catch (apiErr) {
-            apiErrors++;
-            warn(`P${idx}: API call failed -> stop paragraph`, apiErr);
+            p.load("text");
+            // eslint-disable-next-line office-addins/no-context-sync-in-loop
+            await context.sync();
+            const updated = p.text || "";
+            if (!updated || updated === passText) break;
+            passText = updated;
           }
 
           log(
