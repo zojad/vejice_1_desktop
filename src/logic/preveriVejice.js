@@ -556,24 +556,61 @@ function makeAnchor(text, idx, span = 16) {
   return { left, right };
 }
 
-function commaAlreadyPresent(original = "", left = "", right = "") {
-  let insertIdx = -1;
+function findInsertIndex(original = "", left = "", right = "") {
+  if (left && right) {
+    const candidates = [];
+    let pos = original.indexOf(left);
+    while (pos >= 0) {
+      const idx = pos + left.length;
+      const tail = original.slice(idx, idx + right.length);
+      if (!right || tail === right.slice(0, tail.length)) candidates.push(idx);
+      pos = original.indexOf(left, pos + 1);
+    }
+    if (candidates.length) return candidates[0];
+  }
   if (left) {
     const idx = original.lastIndexOf(left);
-    if (idx >= 0) insertIdx = idx + left.length;
+    if (idx >= 0) return idx + left.length;
   }
-  if (insertIdx < 0 && right) {
+  if (right) {
     const idx = original.indexOf(right);
-    if (idx >= 0) insertIdx = idx;
+    if (idx >= 0) return idx;
   }
+  return -1;
+}
+
+function commaAlreadyPresent(original = "", left = "", right = "") {
+  const insertIdx = findInsertIndex(original, left, right);
   if (insertIdx < 0) return false;
   const prev = original[insertIdx - 1];
   const at = original[insertIdx];
   return prev === "," || at === ",";
 }
 
+async function removeDoubleCommas(context, paragraph) {
+  let passes = 0;
+  while (passes < 3) {
+    const matches = paragraph.search(",,", { matchCase: false, matchWholeWord: false });
+    matches.load("items");
+    await context.sync();
+    if (!matches.items.length) break;
+    matches.items.forEach((r) => r.insertText(",", Word.InsertLocation.replace));
+    await context.sync();
+    passes++;
+  }
+}
+
 // Vstavi vejico na podlagi sidra
 async function insertCommaAt(context, paragraph, original, corrected, atCorrectedPos) {
+  // Direct position guard: if a comma is already at/adjacent to the target, skip.
+  const pos = Math.max(0, atCorrectedPos);
+  const prevChar = pos > 0 ? original[pos - 1] : "";
+  const atChar = pos < original.length ? original[pos] : "";
+  if (prevChar === "," || atChar === ",") {
+    warn("insert: comma already at/near target (pos check); skipping");
+    return;
+  }
+
   const { left, right } = makeAnchor(corrected, atCorrectedPos);
   if (commaAlreadyPresent(original, left, right)) {
     warn("insert: comma already present at target; skipping");
@@ -659,6 +696,88 @@ async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
     return;
   }
   matches.items[idx].insertText("", Word.InsertLocation.replace);
+}
+
+/** Token-indexed replacements (formatting-preserving) */
+function buildTokenMap(tokens = []) {
+  const map = {};
+  const counts = new Map();
+  tokens.forEach((tok, idx) => {
+    const id = tok?.id || `t${idx + 1}`;
+    const text = typeof tok?.text === "string" ? tok.text : "";
+    const count = counts.get(text) || 0;
+    map[id] = { text, ordinal: count };
+    counts.set(text, count + 1);
+  });
+  return map;
+}
+
+function collectCorrectionsFromRaw(raw = {}) {
+  const entries =
+    raw?.corrections && typeof raw.corrections === "object" ? Object.values(raw.corrections) : [];
+  const out = [];
+  entries.forEach((entry) => {
+    const corrs = Array.isArray(entry?.corrections) ? entry.corrections : [];
+    corrs.forEach((c) => {
+      const srcId = c?.source_id || entry?.source_start;
+      const tgtId = c?.target_id || entry?.target_start;
+      const srcText = typeof c?.source_text === "string" ? c.source_text : undefined;
+      const tgtText = typeof c?.text === "string" ? c.text : undefined;
+      if (srcId && (tgtText || tgtId)) {
+        out.push({ srcId, tgtId, srcText, tgtText });
+      }
+    });
+  });
+  return out;
+}
+
+function isCommaRelatedChange(srcText = "", tgtText = "") {
+  return srcText !== tgtText && (srcText.includes(",") || (tgtText && tgtText.includes(",")));
+}
+
+async function replaceTokenByOrdinal(context, paragraph, tokenText, ordinal, replacement) {
+  if (!tokenText || typeof replacement !== "string") return;
+  const matches = paragraph.search(tokenText, { matchCase: false, matchWholeWord: false });
+  matches.load("items");
+  await context.sync();
+  if (!matches.items.length) {
+    warn("replace: token text not found", tokenText);
+    return;
+  }
+  const idx = Math.max(0, ordinal);
+  if (idx >= matches.items.length) {
+    warn("replace: ordinal out of range", ordinal, "/", matches.items.length);
+    return;
+  }
+  matches.items[idx].insertText(replacement, Word.InsertLocation.replace);
+}
+
+async function applyCommaCorrectionsTokenBased(context, paragraph, raw = {}) {
+  const sourceTokens = Array.isArray(raw?.source_tokens) ? raw.source_tokens : [];
+  const targetTokens = Array.isArray(raw?.target_tokens) ? raw.target_tokens : [];
+  const sourceMap = buildTokenMap(sourceTokens);
+  const targetMap = buildTokenMap(targetTokens);
+  const corrections = collectCorrectionsFromRaw(raw);
+  let ins = 0;
+  let del = 0;
+  for (const corr of corrections) {
+    const src = sourceMap[corr.srcId];
+    if (!src || !src.text) continue;
+    const replacement =
+      corr.tgtText ||
+      (corr.tgtId && targetMap[corr.tgtId]?.text) ||
+      (raw?.target_text && src.text !== "" ? undefined : undefined);
+    if (typeof replacement !== "string") continue;
+    if (!isCommaRelatedChange(src.text, replacement)) continue;
+    try {
+      await replaceTokenByOrdinal(context, paragraph, src.text, src.ordinal, replacement);
+      if (src.text.includes(",") && !replacement.includes(",")) del++;
+      else if (!src.text.includes(",") && replacement.includes(",")) ins++;
+    } catch (err) {
+      warn("apply token correction failed", err);
+    }
+  }
+  return { inserted: ins, deleted: del };
 }
 
 function createSuggestionId(kind, paragraphIndex, pos) {
@@ -1307,47 +1426,16 @@ async function checkDocumentTextDesktop() {
           const pStart = tnow();
           paragraphsProcessed++;
           log(`P${idx}: len=${sourceText.length} | "${SNIP(trimmed)}"`);
-          let passText = sourceText;
-
-          for (let pass = 0; pass < MAX_AUTOFIX_PASSES; pass++) {
-            let corrected;
-            try {
-              corrected = await popraviPoved(passText);
-            } catch (apiErr) {
-              apiErrors++;
-              warn(`P${idx} pass ${pass}: API call failed -> stop paragraph`, apiErr);
-              break;
-            }
-            log(`P${idx} pass ${pass}: corrected -> "${SNIP(corrected)}"`);
-
-            const opsAll = diffCommasOnly(passText, corrected);
-            const ops = filterCommaOps(passText, corrected, opsAll);
-            log(`P${idx} pass ${pass}: ops candidate=${opsAll.length}, after filter=${ops.length}`);
-
-            if (!ops.length) {
-              if (pass === 0) log(`P${idx}: no applicable comma ops`);
-              break;
-            }
-
-            for (const op of ops) {
-              if (op.kind === "insert") {
-                await insertCommaAt(context, p, passText, corrected, op.pos);
-                await ensureSpaceAfterComma(context, p, corrected, op.pos);
-                totalInserted++;
-              } else {
-                await deleteCommaAt(context, p, passText, op.pos);
-                totalDeleted++;
-              }
-            }
-
-            // eslint-disable-next-line office-addins/no-context-sync-in-loop
+          try {
+            const { correctedText, raw } = await popraviPovedDetailed(sourceText);
+            log(`P${idx} corrected -> "${SNIP(correctedText)}"`);
+            const result = await applyCommaCorrectionsTokenBased(context, p, raw);
+            totalInserted += result?.inserted || 0;
+            totalDeleted += result?.deleted || 0;
             await context.sync();
-            p.load("text");
-            // eslint-disable-next-line office-addins/no-context-sync-in-loop
-            await context.sync();
-            const updated = p.text || "";
-            if (!updated || updated === passText) break;
-            passText = updated;
+          } catch (apiErr) {
+            apiErrors++;
+            warn(`P${idx}: API call failed -> stop paragraph`, apiErr);
           }
 
           log(

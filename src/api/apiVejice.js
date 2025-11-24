@@ -193,6 +193,12 @@ async function requestPopravek(poved) {
     const correctedText = pickCorrectedText(poved, raw);
     if (typeof raw.source_text !== "string") raw.source_text = poved;
     if (typeof raw.target_text !== "string") raw.target_text = correctedText;
+    // TEMP: dump raw API payload for debugging diff alignment
+    try {
+      console.log("VEJICE_RAW", JSON.stringify(raw, null, 2));
+    } catch (e) {
+      /* ignore logging failures */
+    }
 
     log(
       "OK",
