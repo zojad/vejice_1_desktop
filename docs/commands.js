@@ -9168,7 +9168,7 @@ var HIGHLIGHT_DELETE = "#FFCDD2"; // light red
 
 var pendingSuggestionsOnline = [];
 var MAX_PARAGRAPH_CHARS = 1000;
-var LONG_PARAGRAPH_MESSAGE = "Odstavek je predolg za preverjanje. Razdelite ga na krajše stavke in poskusite znova.";
+var LONG_PARAGRAPH_MESSAGE = "Odstavek je predolg za preverjanje. Razdelite ga na več odstavkov in poskusite znova.";
 function resetPendingSuggestionsOnline() {
   pendingSuggestionsOnline.length = 0;
 }
@@ -11739,7 +11739,7 @@ var isWordOnline = function isWordOnline() {
 /******/ 	
 /******/ 	/* webpack/runtime/getFullHash */
 /******/ 	!function() {
-/******/ 		__webpack_require__.h = function() { return "16f2c544c124940be931"; }
+/******/ 		__webpack_require__.h = function() { return "cb10e04a28ff7f80df25"; }
 /******/ 	}();
 /******/ 	
 /******/ 	/* webpack/runtime/global */
