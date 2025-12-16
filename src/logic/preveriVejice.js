@@ -2,9 +2,9 @@
 import { popraviPoved, popraviPovedDetailed } from "../api/apiVejice.js";
 import { isWordOnline } from "../utils/host.js";
 
-/** ─────────────────────────────────────────────────────────
+/** G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
  *  DEBUG helpers (flip DEBUG=false to silence logs)
- *  ───────────────────────────────────────────────────────── */
+ *  G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */
 const envIsProd = () =>
   (typeof process !== "undefined" && process.env?.NODE_ENV === "production") ||
   (typeof window !== "undefined" && window.__VEJICE_ENV__ === "production");
@@ -19,23 +19,15 @@ const errL = (...a) => console.error("[Vejice CHECK]", ...a);
 const tnow = () => performance?.now?.() ?? Date.now();
 const SNIP = (s, n = 80) => (typeof s === "string" ? s.slice(0, n) : s);
 const MAX_AUTOFIX_PASSES =
-  typeof Office !== "undefined" && Office?.context?.platform === "PC" ? 6 : 4;
+  typeof Office !== "undefined" && Office?.context?.platform === "PC" ? 3 : 2;
 
 const HIGHLIGHT_INSERT = "#FFF9C4"; // light yellow
 const HIGHLIGHT_DELETE = "#FFCDD2"; // light red
 
 const pendingSuggestionsOnline = [];
-const MAX_PARAGRAPH_CHARS = 5000; //probavaj
+const MAX_PARAGRAPH_CHARS = 5000;
 const LONG_PARAGRAPH_MESSAGE =
-  "Odstavek je predolg za preverjanje. Razdelite ga na več odstavkov in poskusite znova.";
-const LONG_SENTENCE_MESSAGE =
-  "Poved je predolga za preverjanje. Razdelite jo na krajše povedi in poskusite znova.";
-const CHUNK_API_ERROR_MESSAGE =
-  "Nekaterih povedi ni bilo mogoče preveriti zaradi napake na strežniku. Ostale povedi so bile preverjene.";
-const PARAGRAPH_NON_COMMA_MESSAGE =
-  "Word dodatek Vejice je spremenil več kot vejice. Razdelite odstavek na krajše dele ali ga uredite ročno in poskusite znova.";
-const TRACK_CHANGES_REQUIRED_MESSAGE =
-  "Vključite sledenje spremembam (Track Changes) in znova zaženite preverjanje.";
+  "Odstavek je predolg za preverjanje. Razdelite ga na ve-� odstavkov in poskusite znova.";
 function resetPendingSuggestionsOnline() {
   pendingSuggestionsOnline.length = 0;
 }
@@ -124,42 +116,8 @@ function showToastNotification(message) {
 function notifyParagraphTooLong(paragraphIndex, length) {
   const label = paragraphIndex + 1;
   const msg = `Odstavek ${label}: ${LONG_PARAGRAPH_MESSAGE} (${length} znakov).`;
-  warn("Paragraph too long – skipped", { paragraphIndex, length });
+  warn("Paragraph too long G�� skipped", { paragraphIndex, length });
   showToastNotification(msg);
-}
-
-function notifySentenceTooLong(paragraphIndex, length) {
-  const label = paragraphIndex + 1;
-  const msg = `Odstavek ${label}: ${LONG_SENTENCE_MESSAGE} (${length} znakov).`;
-  warn("Sentence too long – skipped", { paragraphIndex, length });
-  showToastNotification(msg);
-}
-
-function notifyChunkApiFailure(paragraphIndex, chunkIndex) {
-  const paragraphLabel = paragraphIndex + 1;
-  const chunkLabel = chunkIndex + 1;
-  const msg = `Odstavek ${paragraphLabel}, poved ${chunkLabel}: ${CHUNK_API_ERROR_MESSAGE}`;
-  warn("Sentence skipped due to API error", { paragraphIndex, chunkIndex });
-  showToastNotification(msg);
-}
-
-function notifyChunkNonCommaChanges(paragraphIndex, chunkIndex, original, corrected) {
-  const paragraphLabel = paragraphIndex + 1;
-  const chunkLabel = chunkIndex + 1;
-  const msg = `Odstavek ${paragraphLabel}, poved ${chunkLabel}: API je spremenil več kot vejice. Razdelite poved ali jo uredite ročno in poskusite znova.`;
-  warn("Sentence skipped due to non-comma changes", { paragraphIndex, chunkIndex, original, corrected });
-  showToastNotification(msg);
-}
-
-function notifyParagraphNonCommaChanges(paragraphIndex, original, corrected) {
-  const label = paragraphIndex + 1;
-  warn("Paragraph skipped due to non-comma changes", { paragraphIndex, original, corrected });
-  showToastNotification(`Odstavek ${label}: ${PARAGRAPH_NON_COMMA_MESSAGE}`);
-}
-
-function notifyTrackChangesDisabled() {
-  warn("Track changes are disabled – aborting desktop autofix run");
-  showToastNotification(TRACK_CHANGES_REQUIRED_MESSAGE);
 }
 
 const paragraphTokenAnchorsOnline = [];
@@ -212,9 +170,17 @@ function createParagraphTokenAnchors({
 function normalizeTokenList(tokens, prefix) {
   if (!Array.isArray(tokens)) return [];
   const normalized = [];
+  const idCounts = Object.create(null);
   for (let i = 0; i < tokens.length; i++) {
     const token = normalizeToken(tokens[i], prefix, i);
-    if (token) normalized.push(token);
+    if (!token) continue;
+    const baseId = typeof token.id === "string" && token.id.length ? token.id : `${prefix}${i + 1}`;
+    const count = idCounts[baseId] ?? 0;
+    idCounts[baseId] = count + 1;
+    token.id = count === 0 ? baseId : `${baseId}#${count + 1}`;
+    token.originalId = baseId;
+    token.occurrence = count;
+    normalized.push(token);
   }
   return normalized;
 }
@@ -488,11 +454,11 @@ function buildInsertSuggestionMetadata(entry, { originalCharIndex, targetCharInd
   const targetAround = findAnchorsNearChar(entry, "target", targetIndex);
   const documentOffset = entry?.documentOffset ?? 0;
   const highlightAnchor =
+    sourceAround.after ??
     sourceAround.at ??
     sourceAround.before ??
-    sourceAround.after ??
-    targetAround.at ??
     targetAround.before ??
+    targetAround.at ??
     targetAround.after;
   const highlightCharStart = highlightAnchor?.charStart ?? srcIndex;
   const highlightCharEnd = highlightAnchor?.charEnd ?? srcIndex;
@@ -525,14 +491,14 @@ function buildInsertSuggestionMetadata(entry, { originalCharIndex, targetCharInd
   };
 }
 
-/** ─────────────────────────────────────────────────────────
+/** G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
  *  Helpers: znaki & pravila
- *  ───────────────────────────────────────────────────────── */
-const QUOTES = new Set(['"', "'", "“", "”", "„", "«", "»"]);
+ *  G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */
+const QUOTES = new Set(['"', "'", "Gǣ", "Gǥ", "G�P", "-�", "-+"]);
 const isDigit = (ch) => ch >= "0" && ch <= "9";
 const charAtSafe = (s, i) => (i >= 0 && i < s.length ? s[i] : "");
 
-/** Številčni vejici (decimalna ali tisočiška) */
+/** +�tevil-�ni vejici (decimalna ali tiso-�i+�ka) */
 function isNumericComma(original, corrected, kind, pos) {
   const s = kind === "delete" ? original : corrected;
   const prev = charAtSafe(s, pos - 1);
@@ -540,18 +506,12 @@ function isNumericComma(original, corrected, kind, pos) {
   return isDigit(prev) && isDigit(next);
 }
 
-/**
- * Guard: ali so se spremenile samo vejice (in presledki okoli njih).
- * Nekateri API odzivi spreminjajo razmike, zato jih ignoriramo, da ne
- * preskočimo veljavnih predlogov.
- */
 function normalizeForComparison(text) {
   if (typeof text !== "string") return "";
-  return text
-    .replace(/\s+/g, "")
-    .replace(/,/g, "");
+  return text.replace(/\s+/g, "").replace(/,/g, "");
 }
 
+/** Guard: ali so se spremenile samo vejice */
 function onlyCommasChanged(original, corrected) {
   return normalizeForComparison(original) === normalizeForComparison(corrected);
 }
@@ -585,7 +545,7 @@ function diffCommasOnly(original, corrected) {
   return ops;
 }
 
-/** Filtriraj operacije (izloči številčne vejice, dodaj presledek kasneje, če treba) */
+/** Filtriraj operacije (izlo-�i +�tevil-�ne vejice, dodaj presledek kasneje, -�e treba) */
 function filterCommaOps(original, corrected, ops) {
   return ops.filter((op) => {
     if (isNumericComma(original, corrected, op.kind, op.pos)) return false;
@@ -608,6 +568,37 @@ function makeAnchor(text, idx, span = 16) {
   return { left, right };
 }
 
+function findInsertIndex(original = "", left = "", right = "") {
+  if (left && right) {
+    const candidates = [];
+    let pos = original.indexOf(left);
+    while (pos >= 0) {
+      const idx = pos + left.length;
+      const tail = original.slice(idx, idx + right.length);
+      if (!right || tail === right.slice(0, tail.length)) candidates.push(idx);
+      pos = original.indexOf(left, pos + 1);
+    }
+    if (candidates.length) return candidates[0];
+  }
+  if (left) {
+    const idx = original.lastIndexOf(left);
+    if (idx >= 0) return idx + left.length;
+  }
+  if (right) {
+    const idx = original.indexOf(right);
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+function commaAlreadyPresent(original = "", left = "", right = "") {
+  const insertIdx = findInsertIndex(original, left, right);
+  if (insertIdx < 0) return false;
+  const prev = original[insertIdx - 1];
+  const at = original[insertIdx];
+  return prev === "," || at === ",";
+}
+
 function resolveOpPositions(opOrPos) {
   if (opOrPos && typeof opOrPos === "object") {
     const correctedPos =
@@ -624,13 +615,38 @@ function resolveOpPositions(opOrPos) {
   return { correctedPos: pos, originalPos: pos };
 }
 
+async function removeDoubleCommas(context, paragraph) {
+  let passes = 0;
+  while (passes < 3) {
+    const matches = paragraph.search(",,", { matchCase: false, matchWholeWord: false });
+    matches.load("items");
+    await context.sync();
+    if (!matches.items.length) break;
+    matches.items.forEach((r) => r.insertText(",", Word.InsertLocation.replace));
+    await context.sync();
+    passes++;
+  }
+}
+
 // Vstavi vejico na podlagi sidra
 async function insertCommaAt(context, paragraph, original, corrected, opOrPos) {
   const { correctedPos, originalPos } = resolveOpPositions(opOrPos);
   if (!Number.isFinite(correctedPos) || correctedPos < 0) return;
+  // Direct position guard: if a comma is already at/adjacent to the target, skip.
+  const pos = Math.max(0, correctedPos);
+  const prevChar = pos > 0 ? original[pos - 1] : "";
+  const atChar = pos < original.length ? original[pos] : "";
+  if (prevChar === "," || atChar === ",") {
+    warn("insert: comma already at/near target (pos check); skipping");
+    return;
+  }
+
   const { left, right } = makeAnchor(corrected, correctedPos);
+  if (commaAlreadyPresent(original, left, right)) {
+    warn("insert: comma already present at target; skipping");
+    return;
+  }
   const pr = paragraph.getRange();
-  let inserted = false;
 
   if (left.length > 0) {
     const m = pr.search(left, { matchCase: false, matchWholeWord: false });
@@ -638,93 +654,42 @@ async function insertCommaAt(context, paragraph, original, corrected, opOrPos) {
     await context.sync();
     if (!m.items.length) {
       warn("insert: left anchor not found");
-    } else {
-      let targetIdx = m.items.length - 1;
-      if (typeof originalPos === "number" && originalPos >= 0) {
-        const ordinal = countSnippetOccurrencesBefore(original, left, originalPos);
-        if (ordinal > 0) {
-          targetIdx = Math.min(ordinal - 1, m.items.length - 1);
-        }
+      return;
+    }
+    let targetIdx = m.items.length - 1;
+    if (typeof originalPos === "number" && originalPos >= 0) {
+      const ordinal = countSnippetOccurrencesBefore(original, left, originalPos);
+      if (ordinal > 0) {
+        targetIdx = Math.min(ordinal - 1, m.items.length - 1);
       }
-      const after = m.items[targetIdx].getRange("After");
-      after.insertText(",", Word.InsertLocation.before);
-      inserted = true;
     }
-  }
-
-  if (
-    !inserted &&
-    typeof originalPos === "number" &&
-    Number.isFinite(originalPos) &&
-    original.length
-  ) {
-    const charIndex = Math.min(Math.max(originalPos, 0), Math.max(0, original.length - 1));
-    const charRange = await getRangeForCharacterSpan(
-      context,
-      paragraph,
-      original,
-      charIndex,
-      charIndex + 1,
-      "insert-char",
-      charAtSafe(original, charIndex)
-    );
-    if (charRange) {
-      if (originalPos >= original.length) {
-        charRange.getRange("After").insertText(",", Word.InsertLocation.before);
-      } else if (originalPos <= 0) {
-        charRange.insertText(",", Word.InsertLocation.before);
-      } else {
-        charRange.insertText(",", Word.InsertLocation.before);
-      }
-      inserted = true;
+    const after = m.items[targetIdx].getRange("After");
+    after.insertText(",", Word.InsertLocation.before);
+  } else {
+    if (!right) {
+      warn("insert: no right anchor at paragraph start");
+      return;
     }
-  }
-
-  if (
-    !inserted &&
-    typeof originalPos === "number" &&
-    Number.isFinite(originalPos) &&
-    originalPos >= original.length
-  ) {
-    try {
-      const endRange = paragraph.getRange("End");
-      endRange.insertText(",", Word.InsertLocation.before);
-      inserted = true;
-    } catch (err) {
-      warn("insert: end-of-paragraph fallback failed", err);
+    const rightClean =
+      typeof right === "string" ? right.replace(/^,+/, "").replace(/,/g, "").trim() : "";
+    if (!rightClean) {
+      warn("insert: right anchor unavailable");
+      return;
     }
+    const snippet = rightClean.slice(0, 12);
+    const m = pr.search(snippet, { matchCase: false, matchWholeWord: false });
+    m.load("items");
+    await context.sync();
+    if (!m.items.length) {
+      warn("insert: right anchor not found");
+      return;
+    }
+    const before = m.items[0].getRange("Before");
+    before.insertText(",", Word.InsertLocation.before);
   }
-
-  if (inserted) return;
-  if (!right) {
-    warn("insert: no right anchor available");
-    return;
-  }
-
-  const rightTrimmed =
-    typeof right === "string"
-      ? right
-          .replace(/^,+/, "")
-          .replace(/,/g, "")
-          .trim()
-      : "";
-  if (!rightTrimmed.length) {
-    warn("insert: right anchor not usable");
-    return;
-  }
-  const rightSnippet = rightTrimmed.slice(0, 16);
-  const m = pr.search(rightSnippet, { matchCase: false, matchWholeWord: false });
-  m.load("items");
-  await context.sync();
-  if (!m.items.length) {
-    warn("insert: right anchor not found");
-    return;
-  }
-  const before = m.items[0].getRange("Before");
-  before.insertText(",", Word.InsertLocation.before);
 }
 
-// Po potrebi dodaj presledek po vejici (razen pred narekovaji ali števkami)
+// Po potrebi dodaj presledek po vejici (razen pred narekovaji ali +�tevkami)
 async function ensureSpaceAfterComma(context, paragraph, original, corrected, opOrPos) {
   const { correctedPos, originalPos } = resolveOpPositions(opOrPos);
   if (!Number.isFinite(correctedPos) || correctedPos < 0) return;
@@ -751,34 +716,27 @@ async function ensureSpaceAfterComma(context, paragraph, original, corrected, op
     }
     const beforeRight = m.items[targetIdx].getRange("Before");
     beforeRight.insertText(" ", Word.InsertLocation.before);
-    return;
+  } else if (right.length > 0) {
+    const rightClean =
+      typeof right === "string" ? right.replace(/^,+/, "").replace(/,/g, "").trim() : "";
+    if (!rightClean) {
+      warn("space-after: right anchor unavailable");
+      return;
+    }
+    const snippet = rightClean.slice(0, 12);
+    const m = pr.search(snippet, { matchCase: false, matchWholeWord: false });
+    m.load("items");
+    await context.sync();
+    if (!m.items.length) {
+      warn("space-after: right anchor not found");
+      return;
+    }
+    const before = m.items[0].getRange("Before");
+    before.insertText(" ", Word.InsertLocation.before);
   }
-
-  if (!right.length) return;
-  const rightTrimmed =
-    typeof right === "string"
-      ? right
-          .replace(/^,+/, "")
-          .replace(/,/g, "")
-          .trim()
-      : "";
-  if (!rightTrimmed.length) {
-    warn("space-after: right anchor unavailable");
-    return;
-  }
-  const snippet = rightTrimmed.slice(0, 16);
-  const m = pr.search(snippet, { matchCase: false, matchWholeWord: false });
-  m.load("items");
-  await context.sync();
-  if (!m.items.length) {
-    warn("space-after: right anchor not found");
-    return;
-  }
-  const before = m.items[0].getRange("Before");
-  before.insertText(" ", Word.InsertLocation.before);
 }
 
-// Briši samo znak vejice
+// Bri+�i samo znak vejice
 async function deleteCommaAt(context, paragraph, original, atOriginalPos) {
   const pr = paragraph.getRange();
   let ordinal = 0;
@@ -903,59 +861,6 @@ async function highlightInsertSuggestion(
   const searchOpts = { matchCase: false, matchWholeWord: false };
   let range = null;
 
-  if (!range && metadata.highlightAnchorTarget?.tokenText) {
-    range = await findTokenRangeForAnchor(context, paragraph, metadata.highlightAnchorTarget);
-    if (range) {
-      try {
-        range = range.getRange("Content");
-      } catch (err) {
-        warn("highlight insert: token anchor getRange failed", err);
-      }
-      if (range) {
-        log("highlight insert: range via token anchor", {
-          paragraphIndex,
-          tokenId: metadata.highlightAnchorTarget.tokenId,
-          tokenText: metadata.highlightAnchorTarget.tokenText,
-        });
-      }
-    }
-  }
-
-
-  // Prefer token-based char spans before fuzzy snippet searches; this keeps
-  // repeated words from pointing to the wrong occurrence.
-  if (!range && metadata.highlightCharStart >= 0) {
-    const metaEnd =
-      metadata.highlightCharEnd > metadata.highlightCharStart
-        ? metadata.highlightCharEnd
-        : metadata.highlightCharStart + 1;
-    range = await getRangeForCharacterSpan(
-      context,
-      paragraph,
-      anchorsEntry?.originalText ?? paragraph.text ?? corrected,
-      metadata.highlightCharStart,
-      metaEnd,
-      "highlight-insert-anchor",
-      metadata.highlightText
-    );
-    if (range) {
-      log("highlight insert: range via char-span metadata", {
-        paragraphIndex,
-        highlightStart: metadata.highlightCharStart,
-        highlightEnd: metaEnd,
-        highlightText: metadata.highlightText,
-      });
-    } else {
-      log("highlight insert: char-span metadata lookup failed", {
-        paragraphIndex,
-        highlightStart: metadata.highlightCharStart,
-        highlightEnd: metaEnd,
-        highlightText: metadata.highlightText,
-        anchorSource: metadata.highlightAnchorTarget,
-      });
-    }
-  }
-
   if (!range && lastWord) {
     const wordSearch = paragraph.getRange().search(lastWord, {
       matchCase: false,
@@ -965,11 +870,6 @@ async function highlightInsertSuggestion(
     await context.sync();
     if (wordSearch.items.length) {
       range = wordSearch.items[wordSearch.items.length - 1];
-      log("highlight insert: range via lastWord", {
-        paragraphIndex,
-        lastWord,
-        matches: wordSearch.items.length,
-      });
     }
   }
 
@@ -979,11 +879,6 @@ async function highlightInsertSuggestion(
     await context.sync();
     if (leftSearch.items.length) {
       range = leftSearch.items[leftSearch.items.length - 1];
-      log("highlight insert: range via leftSnippet", {
-        paragraphIndex,
-        snippet: leftContext.trim(),
-        matches: leftSearch.items.length,
-      });
     }
   }
 
@@ -996,11 +891,6 @@ async function highlightInsertSuggestion(
       await context.sync();
       if (rightSearch.items.length) {
         range = rightSearch.items[0];
-        log("highlight insert: range via rightSnippet", {
-          paragraphIndex,
-          snippet: rightSnippet,
-          matches: rightSearch.items.length,
-        });
       }
     }
   }
@@ -1016,14 +906,6 @@ async function highlightInsertSuggestion(
       "highlight-insert",
       metadata.highlightText
     );
-    if (range) {
-      log("highlight insert: range via metadata", {
-        paragraphIndex,
-        highlightStart: metadata.highlightCharStart,
-        highlightEnd: metadata.highlightCharEnd,
-        highlightText: metadata.highlightText,
-      });
-    }
     if (!range) return false;
   }
 
@@ -1477,9 +1359,9 @@ export async function rejectAllSuggestionsOnline() {
     await context.sync();
   });
 }
-/** ─────────────────────────────────────────────────────────
- *  MAIN: Preveri vejice – celoten dokument, po odstavkih
- *  ───────────────────────────────────────────────────────── */
+/** G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+ *  MAIN: Preveri vejice G�� celoten dokument, po odstavkih
+ *  G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G�� */
 export async function checkDocumentText() {
   if (isWordOnline()) {
     return checkDocumentTextOnline();
@@ -1493,117 +1375,86 @@ async function checkDocumentTextDesktop() {
   let totalDeleted = 0;
   let paragraphsProcessed = 0;
   let apiErrors = 0;
-  let abortedForTrackChanges = false;
 
   try {
     await Word.run(async (context) => {
-      // preveri, ali je v Wordu vključeno sledenje spremembam
+      // nalo++i in za-�asno vklju-�i sledenje spremembam
       const doc = context.document;
+      let trackToggleSupported = false;
+      let prevTrack = false;
+      log("TrackRevisions toggle skipped; please enable Track Changes in Word if desired.");
+
       try {
-        doc.load("trackRevisions");
+        // pridobi odstavke
+        const paras = context.document.body.paragraphs;
+        paras.load("items/text");
         await context.sync();
-      } catch (trackErr) {
-        warn("Unable to read trackRevisions state", trackErr);
-        abortedForTrackChanges = true;
-        notifyTrackChangesDisabled();
-        return;
-      }
-      if (!doc.trackRevisions) {
-        abortedForTrackChanges = true;
-        notifyTrackChangesDisabled();
-        return;
-      }
+        log("Paragraphs found:", paras.items.length);
 
-      // pridobi odstavke
-      const paras = context.document.body.paragraphs;
-      paras.load("items/text");
-      await context.sync();
-      log("Paragraphs found:", paras.items.length);
+        for (let idx = 0; idx < paras.items.length; idx++) {
+          const p = paras.items[idx];
+          const sourceText = p.text || "";
+          const trimmed = sourceText.trim();
+          if (!trimmed) continue;
 
-      for (let idx = 0; idx < paras.items.length; idx++) {
-        const p = paras.items[idx];
-        let sourceText = p.text || "";
-        const trimmed = sourceText.trim();
-        if (!trimmed) continue;
-        if (trimmed.length > MAX_PARAGRAPH_CHARS) {
-          notifyParagraphTooLong(idx, trimmed.length);
-          continue;
-        }
-
-        const pStart = tnow();
-        paragraphsProcessed++;
-        log(`P${idx}: len=${sourceText.length} | "${SNIP(trimmed)}"`);
-        let passText = sourceText;
-
-        for (let pass = 0; pass < MAX_AUTOFIX_PASSES; pass++) {
-          let corrected;
-          try {
-            corrected = await popraviPoved(passText);
-          } catch (apiErr) {
-            apiErrors++;
-            warn(`P${idx} pass ${pass}: API call failed -> stop paragraph`, apiErr);
-            break;
-          }
-          log(`P${idx} pass ${pass}: corrected -> "${SNIP(corrected)}"`);
-
-          const opsAll = diffCommasOnly(passText, corrected);
-          const ops = filterCommaOps(passText, corrected, opsAll);
-          log(`P${idx} pass ${pass}: ops candidate=${opsAll.length}, after filter=${ops.length}`);
-
-          if (!ops.length) {
-            if (pass === 0) log(`P${idx}: no applicable comma ops`);
-            break;
+          const pStart = tnow();
+          paragraphsProcessed++;
+          log(`P${idx}: len=${sourceText.length} | "${SNIP(trimmed)}"`);
+          const plan = await buildDesktopChunkPlan(sourceText, MAX_PARAGRAPH_CHARS);
+          apiErrors += plan.apiErrors;
+          if (!plan.ops.length) {
+            log(`P${idx}: no applicable comma ops`);
+            continue;
           }
 
-          const sortedOps = [...ops].sort((a, b) => {
-            const aPos =
-              typeof a.originalPos === "number"
-                ? a.originalPos
-                : typeof a.correctedPos === "number"
-                  ? a.correctedPos
-                  : a.pos ?? 0;
-            const bPos =
-              typeof b.originalPos === "number"
-                ? b.originalPos
-                : typeof b.correctedPos === "number"
-                  ? b.correctedPos
-                  : b.pos ?? 0;
-            return bPos - aPos;
+          const anchorsEntry = createParagraphTokenAnchors({
+            paragraphIndex: idx,
+            originalText: sourceText,
+            correctedText: plan.correctedParagraph,
+            sourceTokens: tokenizeForAnchoring(sourceText, "p" + idx + "_src_"),
+            targetTokens: tokenizeForAnchoring(plan.correctedParagraph, "p" + idx + "_tgt_"),
+            documentOffset: 0,
+          });
+
+          const sortedOps = [...plan.ops].sort((a, b) => {
+            const getPos = (op) =>
+              typeof op.originalPos === "number"
+                ? op.originalPos
+                : typeof op.correctedPos === "number"
+                  ? op.correctedPos
+                  : op.pos ?? 0;
+            return getPos(b) - getPos(a);
           });
 
           for (const op of sortedOps) {
+            await applyDesktopCommaOp(context, p, sourceText, plan.correctedParagraph, op, idx, anchorsEntry);
             if (op.kind === "insert") {
-              await insertCommaAt(context, p, passText, corrected, op);
-              await ensureSpaceAfterComma(context, p, passText, corrected, op);
               totalInserted++;
             } else {
-              await deleteCommaAt(context, p, passText, op.pos);
               totalDeleted++;
             }
           }
 
-          // eslint-disable-next-line office-addins/no-context-sync-in-loop
-          await context.sync();
-          p.load("text");
-          // eslint-disable-next-line office-addins/no-context-sync-in-loop
-          await context.sync();
-          const updated = p.text || "";
-          if (!updated || updated === passText) break;
-          passText = updated;
-        }
+          try {
+            await normalizeCommaSpacingInParagraph(context, p);
+          } catch (normErr) {
+            warn('Paragraph ' + (idx + 1) + ': normalize spacing failed', normErr);
+          }
 
-        log(
-          `P${idx}: applied (ins=${totalInserted}, del=${totalDeleted}) | ${Math.round(
-            tnow() - pStart
-          )} ms`
-        );
+          // eslint-disable-next-line office-addins/no-context-sync-in-loop
+          await context.sync();
+
+          log(
+            `P${idx}: applied (ins=${totalInserted}, del=${totalDeleted}) | ${Math.round(
+              tnow() - pStart
+            )} ms`
+          );
+        }
+      } finally {
+        // Leave trackRevisions as-is; no restore to avoid host errors
+        void prevTrack;
       }
     });
-
-    if (abortedForTrackChanges) {
-      log("STOP checkDocumentText() – Track Changes disabled");
-      return;
-    }
 
     log(
       "DONE checkDocumentText() | paragraphs:",
@@ -1635,6 +1486,7 @@ async function checkDocumentTextOnline() {
       resetPendingSuggestionsOnline();
       resetParagraphsTouchedOnline();
       resetParagraphTokenAnchorsOnline();
+
       let documentCharOffset = 0;
 
       for (let idx = 0; idx < paras.items.length; idx++) {
@@ -1656,45 +1508,19 @@ async function checkDocumentTextOnline() {
           continue;
         }
 
+        paragraphsProcessed++;
         log(`P${idx} ONLINE: len=${original.length} | "${SNIP(trimmed)}"`);
         if (trimmed.length > MAX_PARAGRAPH_CHARS) {
-          const chunkResult = await processLongParagraphOnline({
-            context,
-            paragraph: p,
-            paragraphIndex: idx,
-            originalText: original,
-            paragraphDocOffset,
-          });
-          suggestions += chunkResult.suggestionsAdded;
-          apiErrors += chunkResult.apiErrors;
-          if (chunkResult.processedAny) {
-            paragraphsProcessed++;
-          } else {
-            notifyParagraphTooLong(idx, trimmed.length);
-          }
+          notifyParagraphTooLong(idx, trimmed.length);
           continue;
         }
-
-        paragraphsProcessed++;
 
         let detail;
         try {
           detail = await popraviPovedDetailed(original);
         } catch (apiErr) {
           apiErrors++;
-          warn(`P${idx}: API call failed -> fallback to chunking`, apiErr);
-          const chunkResult = await processLongParagraphOnline({
-            context,
-            paragraph: p,
-            paragraphIndex: idx,
-            originalText: original,
-            paragraphDocOffset,
-          });
-          suggestions += chunkResult.suggestionsAdded;
-          apiErrors += chunkResult.apiErrors;
-          if (chunkResult.processedAny) {
-            continue;
-          }
+          warn(`P${idx}: API call failed -> skip paragraph`, apiErr);
           paragraphAnchors = createParagraphTokenAnchors({
             paragraphIndex: idx,
             originalText: original,
@@ -1707,30 +1533,6 @@ async function checkDocumentTextOnline() {
         }
         const corrected = detail.correctedText;
 
-        if (!onlyCommasChanged(original, corrected)) {
-          const chunkResult = await processLongParagraphOnline({
-            context,
-            paragraph: p,
-            paragraphIndex: idx,
-            originalText: original,
-            paragraphDocOffset,
-          });
-          suggestions += chunkResult.suggestionsAdded;
-          apiErrors += chunkResult.apiErrors;
-          if (!chunkResult.processedAny) {
-            notifyParagraphNonCommaChanges(idx, original, corrected);
-            paragraphAnchors = createParagraphTokenAnchors({
-              paragraphIndex: idx,
-              originalText: original,
-              correctedText: original,
-              sourceTokens: [],
-              targetTokens: [],
-              documentOffset: paragraphDocOffset,
-            });
-          }
-          continue;
-        }
-
         paragraphAnchors = createParagraphTokenAnchors({
           paragraphIndex: idx,
           originalText: original,
@@ -1739,6 +1541,11 @@ async function checkDocumentTextOnline() {
           targetTokens: detail.targetTokens,
           documentOffset: paragraphDocOffset,
         });
+
+        if (!onlyCommasChanged(original, corrected)) {
+          log(`P${idx}: API changed more than commas -> SKIP`);
+          continue;
+        }
 
         const ops = filterCommaOps(original, corrected, diffCommasOnly(original, corrected));
         if (!ops.length) continue;
@@ -1772,98 +1579,60 @@ async function checkDocumentTextOnline() {
     errL("ERROR in checkDocumentTextOnline:", e);
   }
 }
-
 function splitParagraphIntoChunks(text = "", maxLen = MAX_PARAGRAPH_CHARS) {
   const safeText = typeof text === "string" ? text : "";
   if (!safeText) return [];
   const sentences = [];
   let start = 0;
 
-  const pushSentence = (end) => {
-    if (end <= start) return;
-    sentences.push({ start, end });
-    start = end;
+  const pushSentence = (contentEnd, gapEnd = contentEnd) => {
+    if (typeof contentEnd !== "number" || contentEnd <= start) {
+      start = Math.max(start, gapEnd ?? contentEnd ?? start);
+      return;
+    }
+    sentences.push({ start, end: contentEnd, gapEnd: gapEnd ?? contentEnd });
+    start = gapEnd ?? contentEnd;
   };
 
   for (let i = 0; i < safeText.length; i++) {
     const ch = safeText[i];
     if (ch === "\n") {
-      pushSentence(i + 1);
+      pushSentence(i + 1, i + 1);
       continue;
     }
     if (/[.!?]/.test(ch)) {
-      let end = i + 1;
-      while (end < safeText.length && /[\])"'»”’]+/.test(safeText[end])) end++;
-      while (end < safeText.length && /\s/.test(safeText[end])) end++;
-      pushSentence(end);
-      i = end - 1;
+      let contentEnd = i + 1;
+      while (contentEnd < safeText.length && /[\])"'»”’]+/.test(safeText[contentEnd])) {
+        contentEnd++;
+      }
+      let gapEnd = contentEnd;
+      while (gapEnd < safeText.length && /\s/.test(safeText[gapEnd])) {
+        gapEnd++;
+      }
+      pushSentence(contentEnd, gapEnd);
+      i = gapEnd - 1;
     }
   }
   if (start < safeText.length) {
-    sentences.push({ start, end: safeText.length });
+    sentences.push({ start, end: safeText.length, gapEnd: safeText.length });
   }
 
-  const chunks = [];
-  let current = null;
-  let chunkIndex = 0;
-
-  const finalizeCurrent = () => {
-    if (!current) return;
-    chunks.push({
-      index: current.index,
-      start: current.start,
-      end: current.end,
-      length: current.end - current.start,
-      text: safeText.slice(current.start, current.end),
-      tooLong: false,
-    });
-    current = null;
-  };
-
-  sentences.forEach((sentence) => {
-    const sentenceLength = sentence.end - sentence.start;
-    if (sentenceLength > maxLen) {
-      finalizeCurrent();
-      chunks.push({
-        index: chunkIndex++,
-        start: sentence.start,
-        end: sentence.end,
-        length: sentenceLength,
-        text: safeText.slice(sentence.start, sentence.end),
-        tooLong: true,
-      });
-      return;
-    }
-    if (!current) {
-      current = { start: sentence.start, end: sentence.end, index: chunkIndex++ };
-      return;
-    }
-    if (sentence.end - current.start <= maxLen) {
-      current.end = sentence.end;
-      return;
-    }
-    finalizeCurrent();
-    current = { start: sentence.start, end: sentence.end, index: chunkIndex++ };
-  });
-
-  finalizeCurrent();
-  return chunks;
-}
-
-function rekeyTokens(tokens, prefix) {
-  if (!Array.isArray(tokens)) return [];
-  return tokens.map((token, idx) => {
-    if (token && typeof token === "object") {
-      return { ...token, token_id: `${prefix}${idx + 1}` };
-    }
+  return sentences.map((sentence, index) => {
+    const gapEnd = sentence.gapEnd ?? sentence.end;
+    const length = sentence.end - sentence.start;
     return {
-      token_id: `${prefix}${idx + 1}`,
-      token: typeof token === "string" ? token : "",
+      index,
+      start: sentence.start,
+      end: sentence.end,
+      length,
+      text: safeText.slice(sentence.start, sentence.end),
+      trailing: safeText.slice(sentence.end, gapEnd),
+      tooLong: length > maxLen,
     };
   });
 }
 
-function tokenizeForAnchoring(text = "", prefix = "syn") {
+function tokenizeForAnchoring(text = "", prefix = "tok") {
   if (typeof text !== "string" || !text.length) return [];
   const tokens = [];
   const regex = /[^\s]+/g;
@@ -1873,138 +1642,113 @@ function tokenizeForAnchoring(text = "", prefix = "syn") {
     tokens.push({
       token_id: `${prefix}${idx++}`,
       token: match[0],
-      start_char: match.index,
-      end_char: match.index + match[0].length,
     });
   }
   return tokens;
 }
 
-async function processLongParagraphOnline({
-  context,
-  paragraph,
-  paragraphIndex,
-  originalText,
-  paragraphDocOffset,
-}) {
-  const chunks = splitParagraphIntoChunks(originalText, MAX_PARAGRAPH_CHARS);
+async function buildDesktopChunkPlan(paragraphText, maxLen) {
+  const chunks = splitParagraphIntoChunks(paragraphText, maxLen);
   if (!chunks.length) {
-    return { suggestionsAdded: 0, apiErrors: 0, processedAny: false };
+    return { ops: [], correctedParagraph: paragraphText, apiErrors: 0 };
   }
-
-  const chunkDetails = [];
-  const processedMeta = [];
-  let suggestionsAdded = 0;
+  const ops = [];
+  const correctedPieces = [];
   let apiErrors = 0;
 
   for (const chunk of chunks) {
-    const meta = {
-      chunk,
-      correctedText: chunk.text,
-      detail: null,
-      syntheticTokens: null,
-    };
-    processedMeta.push(meta);
-
+    const chunkText = chunk.text || "";
     if (chunk.tooLong) {
-      notifySentenceTooLong(paragraphIndex, chunk.length);
-      meta.syntheticTokens = tokenizeForAnchoring(
-        chunk.text,
-        `p${paragraphIndex}_c${chunk.index}_syn_`
-      );
+      warn("Desktop chunk skipped because it exceeds max length", { length: chunk.length });
+      correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
+      continue;
+    }
+    if (!chunkText.trim()) {
+      correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
       continue;
     }
     let detail = null;
     try {
-      detail = await popraviPovedDetailed(chunk.text);
-    } catch (apiErr) {
+      detail = await popraviPovedDetailed(chunkText);
+    } catch (err) {
       apiErrors++;
-      warn(`P${paragraphIndex} chunk ${chunk.index}: API call failed`, apiErr);
-      notifyChunkApiFailure(paragraphIndex, chunk.index);
-      meta.syntheticTokens = tokenizeForAnchoring(
-        chunk.text,
-        `p${paragraphIndex}_c${chunk.index}_syn_`
-      );
+      warn("Desktop chunk API error", err);
+      correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
       continue;
     }
-    const correctedChunk = detail.correctedText;
-    if (!onlyCommasChanged(chunk.text, correctedChunk)) {
-      notifyChunkNonCommaChanges(paragraphIndex, chunk.index, chunk.text, correctedChunk);
-      log(`P${paragraphIndex} chunk ${chunk.index}: API changed more than commas -> SKIP`, {
-        original: chunk.text,
-        corrected: correctedChunk,
+    const corrected = detail?.correctedText ?? "";
+    if (!onlyCommasChanged(chunkText, corrected)) {
+      warn("Desktop chunk skipped due to non-comma changes", {
+        original: chunkText,
+        corrected,
       });
-      meta.syntheticTokens = tokenizeForAnchoring(
-        chunk.text,
-        `p${paragraphIndex}_c${chunk.index}_syn_`
-      );
+      correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
       continue;
     }
-    meta.detail = detail;
-    meta.correctedText = correctedChunk;
-
-    const ops = filterCommaOps(chunk.text, correctedChunk, diffCommasOnly(chunk.text, correctedChunk));
-    if (!ops.length) continue;
-    chunkDetails.push({
-      chunk,
-      ops,
-    });
-  }
-
-  if (!processedMeta.some((meta) => meta.detail)) {
-    return { suggestionsAdded: 0, apiErrors, processedAny: false };
-  }
-
-  const correctedParagraph = processedMeta.map((meta) => meta.correctedText).join("");
-  const sourceTokens = [];
-  const targetTokens = [];
-
-  processedMeta.forEach((meta) => {
-    const basePrefix = `p${paragraphIndex}_c${meta.chunk.index}_`;
-    if (meta.detail) {
-      sourceTokens.push(...rekeyTokens(meta.detail.sourceTokens, `${basePrefix}s`));
-      targetTokens.push(...rekeyTokens(meta.detail.targetTokens, `${basePrefix}t`));
-    } else if (meta.syntheticTokens && meta.syntheticTokens.length) {
-      const rekeyed = rekeyTokens(meta.syntheticTokens, `${basePrefix}syn_`);
-      sourceTokens.push(...rekeyed);
-      targetTokens.push(...rekeyed);
-    }
-  });
-
-  const paragraphAnchors = createParagraphTokenAnchors({
-    paragraphIndex,
-    originalText,
-    correctedText: correctedParagraph,
-    sourceTokens,
-    targetTokens,
-    documentOffset: paragraphDocOffset,
-  });
-
-  for (const entry of chunkDetails) {
-    for (const op of entry.ops) {
-      const offset = entry.chunk.start;
-      const adjustedOp = {
+    const chunkOps = filterCommaOps(
+      chunkText,
+      corrected,
+      diffCommasOnly(chunkText, corrected)
+    );
+    for (const op of chunkOps) {
+      const adjusted = {
         ...op,
-        pos: op.pos + offset,
-        originalPos: (typeof op.originalPos === "number" ? op.originalPos : op.pos) + offset,
-        correctedPos: (typeof op.correctedPos === "number" ? op.correctedPos : op.pos) + offset,
+        pos: (typeof op.pos === "number" ? op.pos : 0) + chunk.start,
+        originalPos:
+          (typeof op.originalPos === "number" ? op.originalPos : op.pos ?? 0) + chunk.start,
+        correctedPos:
+          (typeof op.correctedPos === "number" ? op.correctedPos : op.pos ?? 0) + chunk.start,
       };
-      const marked = await highlightSuggestionOnline(
-        context,
-        paragraph,
-        originalText,
-        correctedParagraph,
-        adjustedOp,
-        paragraphIndex,
-        paragraphAnchors
-      );
-      if (marked) suggestionsAdded++;
+      ops.push(adjusted);
     }
+    correctedPieces.push(corrected + (chunk.trailing || ""));
   }
 
   return {
-    suggestionsAdded,
+    ops,
+    correctedParagraph: correctedPieces.join(""),
     apiErrors,
-    processedAny: true,
   };
+}
+
+async function applyDesktopCommaOp(
+  context,
+  paragraph,
+  originalText,
+  correctedText,
+  op,
+  paragraphIndex,
+  anchorsEntry
+) {
+  if (!op) return;
+
+  if (op.kind === "insert") {
+    const metadata = anchorsEntry
+      ? buildInsertSuggestionMetadata(anchorsEntry, {
+          originalCharIndex: typeof op.originalPos === "number" ? op.originalPos : op.pos ?? -1,
+          targetCharIndex: typeof op.correctedPos === "number" ? op.correctedPos : op.pos ?? -1,
+        })
+      : null;
+    const suggestion = metadata ? { metadata, paragraphIndex } : null;
+    let appliedWithAnchors = false;
+    if (suggestion) {
+      appliedWithAnchors = await tryApplyInsertUsingMetadata(context, paragraph, suggestion);
+    }
+    if (!appliedWithAnchors) {
+      await insertCommaAt(context, paragraph, originalText, correctedText, op);
+    }
+    await ensureSpaceAfterComma(context, paragraph, originalText, correctedText, op);
+    return;
+  }
+
+  const deletePos = typeof op.originalPos === "number" ? op.originalPos : op.pos ?? -1;
+  const metadata = anchorsEntry ? buildDeleteSuggestionMetadata(anchorsEntry, deletePos) : null;
+  const suggestion = metadata ? { metadata, paragraphIndex } : null;
+  let removedWithAnchors = false;
+  if (suggestion) {
+    removedWithAnchors = await tryApplyDeleteUsingMetadata(context, paragraph, suggestion);
+  }
+  if (!removedWithAnchors) {
+    await deleteCommaAt(context, paragraph, originalText, deletePos);
+  }
 }
