@@ -25,7 +25,7 @@ const HIGHLIGHT_INSERT = "#FFF9C4"; // light yellow
 const HIGHLIGHT_DELETE = "#FFCDD2"; // light red
 
 const pendingSuggestionsOnline = [];
-const MAX_PARAGRAPH_CHARS = 5000;
+const MAX_PARAGRAPH_CHARS = 3000;
 const LONG_PARAGRAPH_MESSAGE =
   "Odstavek je predolg za preverjanje. Razdelite ga na ve-� odstavkov in poskusite znova.";
 function resetPendingSuggestionsOnline() {
@@ -508,10 +508,10 @@ function isNumericComma(original, corrected, kind, pos) {
 
 function normalizeForComparison(text) {
   if (typeof text !== "string") return "";
-  return text.replace(/\s+/g, "").replace(/,/g, "");
+  return text.replace(/\s+/g, " ").replace(/,/g, "").trim();
 }
 
-/** Guard: ali so se spremenile samo vejice */
+/** Guard: ali so se spremenile samo vejice in razmaki */
 function onlyCommasChanged(original, corrected) {
   return normalizeForComparison(original) === normalizeForComparison(corrected);
 }
@@ -1393,7 +1393,7 @@ async function checkDocumentTextDesktop() {
 
         for (let idx = 0; idx < paras.items.length; idx++) {
           const p = paras.items[idx];
-          const sourceText = p.text || "";
+          let sourceText = p.text || "";
           const trimmed = sourceText.trim();
           if (!trimmed) continue;
 
@@ -1407,15 +1407,6 @@ async function checkDocumentTextDesktop() {
             continue;
           }
 
-          const anchorsEntry = createParagraphTokenAnchors({
-            paragraphIndex: idx,
-            originalText: sourceText,
-            correctedText: plan.correctedParagraph,
-            sourceTokens: tokenizeForAnchoring(sourceText, "p" + idx + "_src_"),
-            targetTokens: tokenizeForAnchoring(plan.correctedParagraph, "p" + idx + "_tgt_"),
-            documentOffset: 0,
-          });
-
           const sortedOps = [...plan.ops].sort((a, b) => {
             const getPos = (op) =>
               typeof op.originalPos === "number"
@@ -1427,10 +1418,12 @@ async function checkDocumentTextDesktop() {
           });
 
           for (const op of sortedOps) {
-            await applyDesktopCommaOp(context, p, sourceText, plan.correctedParagraph, op, idx, anchorsEntry);
             if (op.kind === "insert") {
+              await insertCommaAt(context, p, sourceText, plan.correctedParagraph, op);
+              await ensureSpaceAfterComma(context, p, sourceText, plan.correctedParagraph, op);
               totalInserted++;
             } else {
+              await deleteCommaAt(context, p, sourceText, op.originalPos ?? op.pos);
               totalDeleted++;
             }
           }
@@ -1602,7 +1595,7 @@ function splitParagraphIntoChunks(text = "", maxLen = MAX_PARAGRAPH_CHARS) {
     }
     if (/[.!?]/.test(ch)) {
       let contentEnd = i + 1;
-      while (contentEnd < safeText.length && /[\])"'»”’]+/.test(safeText[contentEnd])) {
+      while (contentEnd < safeText.length && /[\])"'���]+/.test(safeText[contentEnd])) {
         contentEnd++;
       }
       let gapEnd = contentEnd;
@@ -1632,21 +1625,6 @@ function splitParagraphIntoChunks(text = "", maxLen = MAX_PARAGRAPH_CHARS) {
   });
 }
 
-function tokenizeForAnchoring(text = "", prefix = "tok") {
-  if (typeof text !== "string" || !text.length) return [];
-  const tokens = [];
-  const regex = /[^\s]+/g;
-  let match;
-  let idx = 1;
-  while ((match = regex.exec(text))) {
-    tokens.push({
-      token_id: `${prefix}${idx++}`,
-      token: match[0],
-    });
-  }
-  return tokens;
-}
-
 async function buildDesktopChunkPlan(paragraphText, maxLen) {
   const chunks = splitParagraphIntoChunks(paragraphText, maxLen);
   if (!chunks.length) {
@@ -1658,11 +1636,6 @@ async function buildDesktopChunkPlan(paragraphText, maxLen) {
 
   for (const chunk of chunks) {
     const chunkText = chunk.text || "";
-    if (chunk.tooLong) {
-      warn("Desktop chunk skipped because it exceeds max length", { length: chunk.length });
-      correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
-      continue;
-    }
     if (!chunkText.trim()) {
       correctedPieces.push((chunk.text || "") + (chunk.trailing || ""));
       continue;
@@ -1709,46 +1682,4 @@ async function buildDesktopChunkPlan(paragraphText, maxLen) {
     correctedParagraph: correctedPieces.join(""),
     apiErrors,
   };
-}
-
-async function applyDesktopCommaOp(
-  context,
-  paragraph,
-  originalText,
-  correctedText,
-  op,
-  paragraphIndex,
-  anchorsEntry
-) {
-  if (!op) return;
-
-  if (op.kind === "insert") {
-    const metadata = anchorsEntry
-      ? buildInsertSuggestionMetadata(anchorsEntry, {
-          originalCharIndex: typeof op.originalPos === "number" ? op.originalPos : op.pos ?? -1,
-          targetCharIndex: typeof op.correctedPos === "number" ? op.correctedPos : op.pos ?? -1,
-        })
-      : null;
-    const suggestion = metadata ? { metadata, paragraphIndex } : null;
-    let appliedWithAnchors = false;
-    if (suggestion) {
-      appliedWithAnchors = await tryApplyInsertUsingMetadata(context, paragraph, suggestion);
-    }
-    if (!appliedWithAnchors) {
-      await insertCommaAt(context, paragraph, originalText, correctedText, op);
-    }
-    await ensureSpaceAfterComma(context, paragraph, originalText, correctedText, op);
-    return;
-  }
-
-  const deletePos = typeof op.originalPos === "number" ? op.originalPos : op.pos ?? -1;
-  const metadata = anchorsEntry ? buildDeleteSuggestionMetadata(anchorsEntry, deletePos) : null;
-  const suggestion = metadata ? { metadata, paragraphIndex } : null;
-  let removedWithAnchors = false;
-  if (suggestion) {
-    removedWithAnchors = await tryApplyDeleteUsingMetadata(context, paragraph, suggestion);
-  }
-  if (!removedWithAnchors) {
-    await deleteCommaAt(context, paragraph, originalText, deletePos);
-  }
 }
